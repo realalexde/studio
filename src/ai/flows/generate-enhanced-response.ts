@@ -52,11 +52,22 @@ const generateEnhancedResponseFlow = ai.defineFlow(
   },
   async input => {
     const {output: analysisResult} = await analyzeQueryPrompt(input);
+
+    if (!analysisResult || typeof analysisResult.analysis !== 'string') {
+      console.error("Analysis step failed or returned invalid data. AnalysisResult:", analysisResult);
+      throw new Error("I encountered an issue while analyzing your query. Please try again or rephrase your request.");
+    }
+
     const {output: enhancedResponseResult} = await synthesizeResponsePrompt({
       query: input.query,
-      analysis: analysisResult!.analysis,
+      analysis: analysisResult.analysis,
     });
 
-    return enhancedResponseResult!;
+    if (!enhancedResponseResult) {
+      console.error("Synthesis step failed or returned invalid data. EnhancedResponseResult:", enhancedResponseResult);
+      throw new Error("I encountered an issue while synthesizing the final response. Please try again or rephrase your request.");
+    }
+
+    return enhancedResponseResult;
   }
 );
