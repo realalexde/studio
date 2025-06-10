@@ -20,11 +20,11 @@ interface ModelSelectorProps {
 
 // Define available models with Moonlight branding
 const availableModels = [
-  { id: "moonlight-go", name: "Moonlight Go (Gemini 1.5 Flash)", icon: Icons.Brain },
-  { id: "moonlight-lite", name: "Moonlight Lite (Gemini 1.5 Pro)", icon: Icons.Brain },
-  { id: "moonlight", name: "Moonlight (Gemini 2.0 Flash)", icon: Icons.Brain },
-  { id: "moonlight-flash", name: "Moonlight Flash (Gemini 2.0 Flash lite)", icon: Icons.Brain },
-  { id: "moonlight-pro", name: "Moonlight Pro (Gemini 2.5 Flash preview)", icon: Icons.Brain },
+  { id: "moonlight-go", name: "moonlight go", icon: Icons.Brain },
+  { id: "moonlight-lite", name: "moonlight lite", icon: Icons.Brain },
+  { id: "moonlight", name: "moonlight", icon: Icons.Brain },
+  { id: "moonlight-flash", name: "moonlight flash", icon: Icons.Brain },
+  { id: "moonlight-pro", name: "moonlight pro", icon: Icons.Brain },
 ];
 
 export function ModelSelector({ currentModel, onModelChange, disabled }: ModelSelectorProps) {
@@ -36,7 +36,7 @@ export function ModelSelector({ currentModel, onModelChange, disabled }: ModelSe
       <Select
         value={currentModel}
         onValueChange={onModelChange}
-        disabled={disabled} // Removed availableModels.length <= 1 as we now have multiple options
+        disabled={disabled}
       >
         <SelectTrigger id="model-select" className="w-full md:w-[200px] bg-input border-border">
           <SelectValue placeholder="Select model" />

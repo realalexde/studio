@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ModelSelector } from "./model-selector"; 
+import { ModelSelector } from "./model-selector";
 import React from "react";
 
 const navItems = [
@@ -24,7 +24,7 @@ const navItems = [
 
 export function SidebarNav() {
   const pathname = usePathname();
-  const [currentModel, setCurrentModel] = React.useState("moonlight"); // Default to Moonlight (Gemini 2.0 Flash)
+  const [currentModel, setCurrentModel] = React.useState("moonlight"); // Default to moonlight
 
   const handleModelChange = (modelId: string) => {
     setCurrentModel(modelId);
