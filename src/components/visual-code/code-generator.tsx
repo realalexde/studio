@@ -15,7 +15,7 @@ import { generateCodeProject, GenerateCodeProjectInput, GenerateCodeProjectOutpu
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch"; // Added Switch import
+import { Switch } from "@/components/ui/switch";
 
 interface GeneratedFile {
   fileName: string;
@@ -31,7 +31,7 @@ export function CodeGenerator() {
   const [request, setRequest] = useState("");
   const [generatedProject, setGeneratedProject] = useState<GeneratedProject | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [enhanceRequest, setEnhanceRequest] = useState(false); // State for enhancement toggle
+  const [enhanceRequest, setEnhanceRequest] = useState(false);
   const { toast } = useToast();
 
   const handleSubmit = async (e: FormEvent) => {
@@ -51,7 +51,7 @@ export function CodeGenerator() {
     try {
       const input: GenerateCodeProjectInput = { 
         request,
-        enhanceRequest: enhanceRequest // Pass enhance option to the flow
+        enhanceRequest: enhanceRequest 
       };
       const result: GenerateCodeProjectOutput = await generateCodeProject(input);
       
@@ -154,7 +154,7 @@ export function CodeGenerator() {
               onCheckedChange={setEnhanceRequest}
               disabled={isLoading}
             />
-            <Label htmlFor="enhance-request-toggle" className="text-sm">Enhance Project Request for Better Output</Label>
+            <Label htmlFor="enhance-request-toggle" className="text-sm">Enhance</Label>
           </div>
 
 
