@@ -6,7 +6,7 @@
  *
  * - searchAndSummarize - A function that takes a query and history, returns a summarized response which may include text and/or an image.
  * - SearchAndSummarizeInput - The input type for the searchAndSummarize function.
- * - SearchAndSummarizeOutput - The return type for the searchAndSummarize function.
+ * - SearchAndSummarizeOutput - The output type for the searchAndSummarize function.
  */
 
 import {ai} from '@/ai/genkit';
@@ -73,7 +73,7 @@ const internetSearchTool = ai.defineTool(
 const generateImageTool = ai.defineTool(
   {
     name: 'generateImageTool',
-    description: 'Generates an image based on a textual prompt. Use this tool when the user explicitly asks to create or draw an image.',
+    description: 'Generates an image based on a textual prompt. Use this tool when the user explicitly asks to create/draw an image, OR when an image would visually enhance a textual answer about a suitable subject, OR as part of a combined request for information and an image.',
     inputSchema: z.object({
       imagePrompt: z.string().describe('A detailed description of the image to be generated.'),
     }),
@@ -143,32 +143,33 @@ If the user's LATEST Question/Request ("{{{query}}}") is primarily a simple gree
   Follow these steps precisely:
 
   1.  **Analyze User's LATEST Question/Request & History**:
-      *   Determine the user's primary intent: Are they asking for textual information/summary, OR are they asking you to generate/draw/create an image?
+      *   Determine the user's primary intent: Is it *primarily* asking for textual information, *primarily* asking you to generate/draw/create an image, or a *combination* of both (e.g., "Tell me about X and show me a picture of Y")?
       *   If the latest query is short or ambiguous (e.g., "what about that?"), use the conversation history to determine the actual topic of interest or intent.
 
-  2.  **If the user is asking to GENERATE AN IMAGE** (e.g., "draw a ...", "make a picture of ...", "generate an image of ...", "create an image showing ..."):
-      *   Use the 'generateImageTool'. Provide a clear and descriptive 'imagePrompt' to the tool based on the user's request.
-      *   The tool will return an object like: '{ "imageUrl": "data:image/png;base64,..." }'.
-      *   Your 'summary' field in the output should be a short, relevant caption for the image, *in the detected language* (e.g., if the query was Russian, the caption should be in Russian like "Вот ваше изображение кота.").
+  2.  **If the user is asking to GENERATE AN IMAGE (either solely or as part of a combined request):**
+      *   Use the 'generateImageTool' for the image part of the request. Provide a clear and descriptive 'imagePrompt' to the tool based on the user's request for the image.
+      *   If the request was *only* for an image, your 'summary' field in the output should be a short, relevant caption for the image, *in the detected language* (e.g., if the query was Russian, the caption should be in Russian like "Вот ваше изображение кота.").
+      *   If the request was *combined* with an informational query (e.g., "Tell me about X and show me a picture of Y"), your 'summary' field should contain the textual answer to the informational part ("Tell me about X"), *in the detected language*. The image should be relevant to the image part of the request ("picture of Y").
       *   Your 'imageUrl' field in the output should be the URL from the tool.
-      *   DO NOT use the 'internetSearch' tool if the primary intent is image generation.
+      *   If the request involved an informational part and also asked for an image, you may use the 'internetSearch' tool if needed for the informational part before generating the image and formulating the summary.
 
-  3.  **If the user is asking for INFORMATION or a SUMMARY** (and NOT primarily an image):
+  3.  **If the user is asking for INFORMATION or a SUMMARY (and there's NO explicit image request in the LATEST query):**
       *   Determine if the question requires information that is likely outside your general knowledge, needs to be up-to-date, or if the user explicitly asks for a search.
       *   If you decide external information is needed, use the 'internetSearch' tool. Provide a clear and specific 'searchQuery' to the tool.
-      *   The 'internetSearch' tool will return an object like: '{ "content": "information found...", "source": "www.example-source.com" }'.
-      *   Formulate your 'summary' field:
-          *   If you used 'internetSearch': Your response MUST directly incorporate the 'content' from the tool to answer the user's latest question, *all in the detected language*. You MUST clearly state that the information came from the internet and CITE the 'source' provided by the tool (e.g., "According to [source from tool], [summary of content from tool]."). Remember, this entire statement must be in the detected language of the user's query.
-          *   If you did NOT use 'internetSearch': Provide a comprehensive answer based on your general knowledge and history, *in the detected language*.
-      *   The 'imageUrl' field in your output should be OMITTED in this case.
+      *   Formulate your textual 'summary' based on your general knowledge or the search results, *in the detected language*. This 'summary' is the primary answer to the user's query.
+      *   **Supplemental Image Consideration**: After formulating the textual summary, critically assess if a visually illustrative image would significantly enhance the user's understanding or engagement with the topic. The image should be directly relevant to the main subject of the textual summary.
+          *   If you decide an image is appropriate AND the topic is suitable for image generation (e.g., concrete objects, scenes, concepts that can be visualized), use the 'generateImageTool'. The 'imagePrompt' for this tool should be a concise description of an image that would best complement your textual summary.
+          *   If an image is generated by the tool, include its 'imageUrl' in your response.
+          *   If you decide a supplemental image is not appropriate or it cannot be generated, omit the 'imageUrl' field.
+      *   The 'imageUrl' field in your output should be OMITTED if no supplemental image was generated.
       *   **JSON Formatting for 'summary'**: By default, 'summary' is plain text. ONLY if the user's LATEST question *explicitly* asks for the output "in JSON format", "as JSON", or "output JSON", then the *entire string content* of the 'summary' field must be a valid JSON string. Otherwise, it MUST be plain text.
 
   4.  **Final Output Structure (applies to information/image requests from steps 2 & 3 only):**
       *   Your response MUST be a single JSON object.
       *   This JSON object MUST have a key named "summary" with a non-empty string value (in the detected language).
-      *   If an image was generated, the JSON object MUST also have a key named "imageUrl" with the image data URI as a string value. If no image was generated, this key should be OMITTED from the JSON object.
+      *   If an image was generated (either explicitly requested or as a supplement), the JSON object MUST also have a key named "imageUrl" with the image data URI as a string value. If no image was generated, this key should be OMITTED from the JSON object.
       *   Example structure if no image: \`{ "summary": "Your textual answer here, in the detected language." }\`
-      *   Example structure with an image: \`{ "summary": "Your image caption here, in the detected language.", "imageUrl": "data:image/png;base64,..." }\`
+      *   Example structure with an image: \`{ "summary": "Your image caption or full answer here, in the detected language.", "imageUrl": "data:image/png;base64,..." }\`
       *   If, after considering all information and tool outputs (or tool failures), you cannot provide a meaningful answer or perform the requested action due to ambiguity or limitations, your "summary" field should reflect this politely, *in the detected language* (e.g., "I need more information for that request."). You MUST still return this polite message within the valid JSON structure described above (e.g., \`{ "summary": "I'm sorry, I cannot fulfill that request, in the detected language." }\`).
       *   DO NOT return null for the entire output. DO NOT return a malformed JSON. DO NOT return an empty string for the "summary" field.
 
