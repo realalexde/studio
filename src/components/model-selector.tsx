@@ -17,10 +17,11 @@ interface ModelSelectorProps {
   disabled?: boolean;
 }
 
-// Define available models - G4F is conceptual for this JS-based Genkit setup
+// Define available models
 const availableModels = [
   { id: "gemini", name: "Gemini (Default)", icon: Icons.Brain },
-  { id: "g4f", name: "G4F (Conceptual)", icon: Icons.Brain },
+  // G4F is a Python library and not directly compatible with this Genkit (JS/TS) setup.
+  // { id: "g4f", name: "G4F (Conceptual)", icon: Icons.Brain }, 
 ];
 
 export function ModelSelector({ currentModel, onModelChange, disabled }: ModelSelectorProps) {
@@ -32,7 +33,7 @@ export function ModelSelector({ currentModel, onModelChange, disabled }: ModelSe
       <Select
         value={currentModel}
         onValueChange={onModelChange}
-        disabled={disabled}
+        disabled={disabled || availableModels.length <= 1}
       >
         <SelectTrigger id="model-select" className="w-full md:w-[200px] bg-input border-border">
           <SelectValue placeholder="Select model" />
