@@ -9,7 +9,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
 import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, AiChatMessage } from "@/ai/flows/search-and-summarize";
-// import { generateEnhancedImage, GenerateEnhancedImageInput, GenerateEnhancedImageOutput } from "@/ai/flows/generate-enhanced-image"; // No longer used directly from dialog
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -24,9 +23,8 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Input as UIDialogInput } from "@/components/ui/input"; // Renamed to avoid conflict with local 'input' state
+import { Input as UIDialogInput } from "@/components/ui/input"; 
 import { Label } from "@/components/ui/label";
-// import { Switch } from "@/components/ui/switch"; // No longer used in this dialog
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Message {
@@ -47,7 +45,7 @@ export function ChatInterface() {
   const [dialogs, setDialogs] = useState<Record<string, Message[]>>({});
   const [activeDialogId, setActiveDialogId] = useState<string | null>(null);
   
-  const [currentInputText, setCurrentInputText] = useState(""); // Renamed from 'input'
+  const [currentInputText, setCurrentInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   
@@ -198,7 +196,7 @@ export function ChatInterface() {
 
     const historyForAI: AiChatMessage[] = (dialogs[activeDialogId] || [])
       .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl))
-      .slice(0, -1) // Exclude the current user message we just added for display
+      .slice(0, -1) 
       .map(({ sender, text, imageUrl }) => ({ sender, text: text || "", imageUrl }));
           
     try {
@@ -246,17 +244,17 @@ export function ChatInterface() {
       const botLoadingMessageId = (Date.now() + 1).toString();
       setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }] }));
       
-      setIsLoading(true); // General loading state for AI response
+      setIsLoading(true); 
 
       const historyForAI: AiChatMessage[] = (dialogs[activeDialogId] || [])
         .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl))
-        .slice(0, -1) // Exclude current user message with image
+        .slice(0, -1) 
         .map(({ sender, text, imageUrl }) => ({ sender, text: text || "", imageUrl }));
 
       try {
         const flowInput: SearchAndSummarizeInput = {
           query: {
-            text: uploadAccompanyingText || undefined, // "Describe this image." or similar could be a default
+            text: uploadAccompanyingText || undefined, 
             imageUrl: imageDataUri,
           },
           history: historyForAI,
@@ -278,7 +276,7 @@ export function ChatInterface() {
         setIsProcessingUpload(false);
         setImageToUpload(null);
         setUploadAccompanyingText("");
-        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        if (fileInputRef.current) fileInputRef.current.value = ""; 
       }
     };
     reader.onerror = (error) => {
@@ -403,7 +401,7 @@ export function ChatInterface() {
                                       skeletonElement.classList.add('bg-destructive/10');
                                       skeletonElement.innerHTML = '<p class="text-xs text-destructive p-2 text-center flex items-center justify-center h-full">Error loading image</p>';
                                   }
-                                  if (!message.imageError) { // Prevent multiple toasts for same error
+                                  if (!message.imageError) { 
                                     toast({ variant: "destructive", title: "Image Load Error", description: "The image could not be displayed."});
                                     setDialogs(prevDialogs => {
                                       const updatedMsgs = (prevDialogs[activeDialogId!] || []).map(msg =>
@@ -471,7 +469,7 @@ export function ChatInterface() {
       </Card>
 
       <Dialog open={isUploadImageDialogOpen} onOpenChange={setIsUploadImageDialogOpen}>
-        <DialogContent className="sm:max-w-[480px] bg-card border-border">
+        <DialogContent className="sm:max-w-lg bg-card border-border">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-foreground">
               <Icons.Paperclip className="w-6 h-6 text-accent"/>
@@ -497,7 +495,16 @@ export function ChatInterface() {
               />
             </div>
             {imageToUpload && (
-              <div className="col-span-4 flex justify-center">
+             <div className="grid grid-cols-4 items-center gap-4 mt-1">
+               <div className="col-start-2 col-span-3">
+                 <p className="text-xs text-muted-foreground truncate">
+                   Selected: {imageToUpload.name}
+                 </p>
+               </div>
+             </div>
+           )}
+            {imageToUpload && (
+              <div className="col-span-4 flex justify-center mt-2">
                 <Image src={URL.createObjectURL(imageToUpload)} alt="Preview" width={100} height={100} className="rounded-md border max-h-32 object-contain"/>
               </div>
             )}
@@ -539,3 +546,4 @@ export function ChatInterface() {
     </>
   );
 }
+
