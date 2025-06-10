@@ -12,9 +12,11 @@ import {
   Search,
   Brain,
   Download,
-  Moon, // Added Moon icon
-  X, // Added X for Close icon
-  ImagePlus, // Added ImagePlus for explicit image generation
+  Moon,
+  X,
+  ImagePlus,
+  PlusSquare, // Added PlusSquare icon
+  Trash2, // Added Trash2 icon
   type LucideIcon,
 } from 'lucide-react';
 
@@ -25,7 +27,7 @@ export const Icons = {
   Chat: MessageSquare,
   Code: Code2,
   Image: ImageIcon,
-  Bot: Moon, // Changed Bot to Moon
+  Bot: Moon,
   User: User,
   Spinner: Loader2,
   Send: Send,
@@ -33,8 +35,10 @@ export const Icons = {
   Search: Search,
   Brain: Brain,
   Download: Download,
-  Moon: Moon, // Export Moon icon
-  Close: X, // Added Close icon
-  ImagePlus: ImagePlus, // Export ImagePlus
+  Moon: Moon,
+  Close: X,
+  ImagePlus: ImagePlus,
+  PlusSquare: PlusSquare, // Export PlusSquare
+  Trash2: Trash2, // Export Trash2
 };
 

@@ -22,12 +22,12 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Input as UIDialogInput } from "@/components/ui/input"; // Renamed to avoid conflict with chat input state
+import { Input as UIDialogInput } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Added Tabs components
 
 interface Message {
   id: string;
@@ -39,141 +39,217 @@ interface Message {
   imageError?: boolean;
 }
 
-const CHAT_HISTORY_LOCAL_STORAGE_KEY = "chatHistory_v2_localStorage";
+const CHAT_DIALOGS_STORAGE_KEY = "nexusAiChatDialogs_v1";
+const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "nexusAiChatActiveDialogId_v1";
+const CHAT_NEXT_DIALOG_ID_COUNTER_STORAGE_KEY = "nexusAiChatIdCounter_v1";
+
+const DEFAULT_DIALOG_ID = "chat-1";
 
 export function ChatInterface() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [dialogs, setDialogs] = useState<Record<string, Message[]>>({});
+  const [activeDialogId, setActiveDialogId] = useState<string | null>(null);
+  const [nextDialogIdCounter, setNextDialogIdCounter] = useState<number>(1);
+  
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [initialLoadAttempted, setInitialLoadAttempted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // For AI response loading
+  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { getSelectedModel } = useModel();
 
-  // State for image generation dialog
   const [isImageDialogOpgen, setIsImageDialogOpgen] = useState(false);
   const [imageDialogPrompt, setImageDialogPrompt] = useState("");
   const [enhanceDialogPrompt, setEnhanceDialogPrompt] = useState(false);
   const [isGeneratingDialogImage, setIsGeneratingDialogImage] = useState(false);
 
-
   const selectedModel = getSelectedModel();
   const modelDisplayName = selectedModel ? selectedModel.name : "";
 
+  // Load from localStorage
   useEffect(() => {
     try {
-      const savedMessagesJson = localStorage.getItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
-      if (savedMessagesJson) {
-        const loadedMessages: Message[] = JSON.parse(savedMessagesJson);
-        if (Array.isArray(loadedMessages)) {
-          setMessages(
-            loadedMessages.filter(msg =>
-              typeof msg.id === 'string' &&
-              (typeof msg.text === 'string' || typeof msg.imageUrl === 'string' || (msg.imageUrl === undefined && msg.imageError === true)) &&
-              (msg.sender === 'user' || msg.sender === 'bot')
-            ).map(msg => ({
+      const savedDialogsJson = localStorage.getItem(CHAT_DIALOGS_STORAGE_KEY);
+      const savedActiveDialogId = localStorage.getItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY);
+      const savedNextDialogIdCounter = localStorage.getItem(CHAT_NEXT_DIALOG_ID_COUNTER_STORAGE_KEY);
+
+      let loadedDialogs: Record<string, Message[]> = {};
+      if (savedDialogsJson) {
+        const parsedDialogs = JSON.parse(savedDialogsJson);
+        // Ensure loaded dialogs have the correct structure
+        Object.keys(parsedDialogs).forEach(id => {
+          if (Array.isArray(parsedDialogs[id])) {
+            loadedDialogs[id] = parsedDialogs[id].map((msg: any) => ({
               ...msg,
-              isLoading: false,
+              isLoading: false, // Ensure isLoading is false on load
               imageUrl: msg.imageError ? undefined : msg.imageUrl,
-            }))
-          );
-        }
+            })).filter(Boolean);
+          }
+        });
       }
+
+      let currentActiveId = savedActiveDialogId;
+      let currentIdCounter = savedNextDialogIdCounter ? parseInt(savedNextDialogIdCounter, 10) : 1;
+
+      if (Object.keys(loadedDialogs).length === 0) {
+        // No dialogs, create a default one
+        loadedDialogs = { [DEFAULT_DIALOG_ID]: [] };
+        currentActiveId = DEFAULT_DIALOG_ID;
+        currentIdCounter = 2; // Next ID will be chat-2
+      } else if (!currentActiveId || !loadedDialogs[currentActiveId]) {
+        // Active ID is invalid or missing, set to first available
+        currentActiveId = Object.keys(loadedDialogs)[0];
+      }
+      
+      setDialogs(loadedDialogs);
+      setActiveDialogId(currentActiveId);
+      setNextDialogIdCounter(currentIdCounter);
+
     } catch (error) {
       console.error("Failed to load chat history from localStorage:", error);
-      localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
       toast({
         variant: "destructive",
         title: "Chat History Error",
-        description: "Could not load previous chat history. It may have been corrupted.",
+        description: "Could not load previous chat history. Starting fresh.",
       });
+      // Reset to a clean state
+      setDialogs({ [DEFAULT_DIALOG_ID]: [] });
+      setActiveDialogId(DEFAULT_DIALOG_ID);
+      setNextDialogIdCounter(2);
+      localStorage.removeItem(CHAT_DIALOGS_STORAGE_KEY);
+      localStorage.removeItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY);
+      localStorage.removeItem(CHAT_NEXT_DIALOG_ID_COUNTER_STORAGE_KEY);
     }
-    setInitialLoadAttempted(true);
+    setInitialLoadComplete(true);
   }, [toast]);
 
+  // Save to localStorage
+  useEffect(() => {
+    if (!initialLoadComplete || !activeDialogId) return; // Don't save until initial load is done and there's an active dialog
+
+    try {
+      // Sanitize dialogs before saving (remove isLoading states)
+      const dialogsToSave: Record<string, Message[]> = {};
+      Object.entries(dialogs).forEach(([id, msgs]) => {
+        dialogsToSave[id] = msgs.map(({ isLoading: _isLoading, ...rest }) => {
+           return rest.imageError ? { ...rest, imageUrl: undefined } : rest;
+        });
+      });
+
+      localStorage.setItem(CHAT_DIALOGS_STORAGE_KEY, JSON.stringify(dialogsToSave));
+      localStorage.setItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY, activeDialogId);
+      localStorage.setItem(CHAT_NEXT_DIALOG_ID_COUNTER_STORAGE_KEY, nextDialogIdCounter.toString());
+    } catch (error) {
+      console.error("Failed to save chat history to localStorage:", error);
+    }
+  }, [dialogs, activeDialogId, nextDialogIdCounter, initialLoadComplete]);
+  
+  // Scroll to bottom
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }
+  }, [dialogs, activeDialogId]); // Scroll when active dialog messages change
 
-    if (!initialLoadAttempted) {
+  const currentMessages = activeDialogId ? dialogs[activeDialogId] || [] : [];
+
+  const handleAddDialog = () => {
+    const newDialogId = `chat-${nextDialogIdCounter}`;
+    setDialogs(prevDialogs => ({
+      ...prevDialogs,
+      [newDialogId]: []
+    }));
+    setActiveDialogId(newDialogId);
+    setNextDialogIdCounter(prevCounter => prevCounter + 1);
+    setInput(""); // Clear input for new chat
+  };
+
+  const handleDeleteDialog = (dialogIdToDelete: string) => {
+    if (Object.keys(dialogs).length <= 1) {
+      toast({
+        variant: "destructive",
+        title: "Cannot Delete",
+        description: "You must have at least one chat open.",
+      });
+      // Or, reset the current one:
+      // setDialogs(prev => ({...prev, [dialogIdToDelete]: []}));
       return;
     }
 
-    try {
-      if (messages.length > 0 && !messages.some(msg => msg.isLoading)) {
-        const messagesToSave = messages.map(({ isLoading, ...rest }) => {
-          return rest.imageError ? { ...rest, imageUrl: undefined } : rest;
-        });
-        const messagesJson = JSON.stringify(messagesToSave);
-        localStorage.setItem(CHAT_HISTORY_LOCAL_STORAGE_KEY, messagesJson);
-      } else if (messages.length === 0 && initialLoadAttempted) {
-        const currentStorage = localStorage.getItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
-        if (currentStorage && currentStorage !== "[]") {
-            localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
-        }
+    const updatedDialogs = { ...dialogs };
+    delete updatedDialogs[dialogIdToDelete];
+    setDialogs(updatedDialogs);
+
+    if (activeDialogId === dialogIdToDelete) {
+      // Switch to the first available dialog or create a new one if none left (should not happen due to above check)
+      const remainingDialogIds = Object.keys(updatedDialogs);
+      setActiveDialogId(remainingDialogIds[0] || null); // Set to first or null
+      if(remainingDialogIds.length === 0) { // Should ideally not be reached if the guard above works
+         handleAddDialog();
       }
-    } catch (error) {
-      console.error("Failed to save chat history to localStorage:", error);
     }
-  }, [messages, initialLoadAttempted]);
+  };
+
 
   const handleSendMessage = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!input.trim()) return;
+    if (!input.trim() || !activeDialogId) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       text: input,
       sender: "user",
-      isLoading: false,
     };
 
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
-
+    setDialogs(prevDialogs => ({
+      ...prevDialogs,
+      [activeDialogId]: [...(prevDialogs[activeDialogId] || []), userMessage]
+    }));
+    
     const botLoadingMessageId = (Date.now() + 1).toString();
-    setMessages((prevMessages) => [
-      ...prevMessages,
-      {
-        id: botLoadingMessageId,
-        text: "",
-        sender: "bot",
-        isLoading: true,
-      },
-    ]);
+    setDialogs(prevDialogs => ({
+      ...prevDialogs,
+      [activeDialogId]: [
+        ...(prevDialogs[activeDialogId] || []),
+        { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }
+      ]
+    }));
 
     setInput("");
     setIsLoading(true);
 
-    const historyForAI: AiChatMessage[] = [...messages, userMessage]
-      .filter(msg => !msg.isLoading && (msg.text.trim() !== "" || msg.imageUrl))
+    const historyForAI: AiChatMessage[] = (dialogs[activeDialogId] || [])
+      .concat(userMessage) // Add current user message to history for AI
+      .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl))
       .map(({ sender, text }) => ({ sender, text: text || "" }));
-
+      
     try {
       const flowInput: SearchAndSummarizeInput = {
-        query: userMessage.text, // Use the text from the user message
-        history: historyForAI.slice(0, -1)
+        query: userMessage.text,
+        history: historyForAI.slice(0, -1) // History up to, but not including, the current user message
       };
       const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
 
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) =>
+      setDialogs(prevDialogs => ({
+        ...prevDialogs,
+        [activeDialogId]: (prevDialogs[activeDialogId] || []).map(msg =>
           msg.id === botLoadingMessageId
             ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false, imageError: false }
             : msg
         )
-      );
+      }));
 
     } catch (error) {
       console.error("AI Error:", error);
       const errorText = error instanceof Error ? error.message : "An unknown error occurred.";
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) =>
+      setDialogs(prevDialogs => ({
+        ...prevDialogs,
+        [activeDialogId]: (prevDialogs[activeDialogId] || []).map(msg =>
           msg.id === botLoadingMessageId
             ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageUrl: undefined, imageError: true }
             : msg
         )
-      );
+      }));
       toast({
         variant: "destructive",
         title: "Error",
@@ -185,16 +261,16 @@ export function ChatInterface() {
   };
 
   const handleGenerateImageFromDialog = async () => {
-    if (!imageDialogPrompt.trim()) {
+    if (!imageDialogPrompt.trim() || !activeDialogId) {
       toast({
         variant: "destructive",
-        title: "Empty Prompt",
-        description: "Please enter a prompt for the image.",
+        title: "Empty Prompt or No Active Chat",
+        description: "Please enter a prompt for the image and ensure a chat is active.",
       });
       return;
     }
     setIsGeneratingDialogImage(true);
-    setIsImageDialogOpgen(false); // Close dialog
+    setIsImageDialogOpgen(false);
 
     const userMessageText = `Requested image: "${imageDialogPrompt}" ${enhanceDialogPrompt ? "(enhanced)" : ""}`;
     const userMessage: Message = {
@@ -202,10 +278,10 @@ export function ChatInterface() {
       text: userMessageText,
       sender: "user",
     };
-    setMessages((prev) => [...prev, userMessage]);
+    setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), userMessage] }));
 
     const botLoadingMessageId = (Date.now() + 1).toString();
-    setMessages((prev) => [...prev, { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }]);
+    setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }] }));
 
     try {
       const genInput: GenerateEnhancedImageInput = {
@@ -213,13 +289,14 @@ export function ChatInterface() {
         enhance: enhanceDialogPrompt,
       };
       const result: GenerateEnhancedImageOutput = await generateEnhancedImage(genInput);
-      setMessages((prev) =>
-        prev.map((msg) =>
+      setDialogs(prev => ({
+        ...prev,
+        [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
           msg.id === botLoadingMessageId
             ? { ...msg, text: `Here's the image for "${imageDialogPrompt}"`, imageUrl: result.imageUrl, isLoading: false }
             : msg
         )
-      );
+      }));
       toast({
         title: "Image Generated",
         description: "Image from dialog added to chat.",
@@ -227,13 +304,14 @@ export function ChatInterface() {
     } catch (error) {
       console.error("Dialog Image Generation Error:", error);
       const errorText = error instanceof Error ? error.message : "An unknown error occurred.";
-      setMessages((prev) =>
-        prev.map((msg) =>
+      setDialogs(prev => ({
+        ...prev,
+        [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
           msg.id === botLoadingMessageId
             ? { ...msg, text: `Error generating image: ${errorText}`, isLoading: false, imageError: true }
             : msg
         )
-      );
+      }));
       toast({
         variant: "destructive",
         title: "Image Generation Error",
@@ -241,11 +319,10 @@ export function ChatInterface() {
       });
     } finally {
       setIsGeneratingDialogImage(false);
-      setImageDialogPrompt(""); // Reset for next time
+      setImageDialogPrompt("");
       setEnhanceDialogPrompt(false);
     }
   };
-
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -253,6 +330,15 @@ export function ChatInterface() {
       handleSendMessage();
     }
   };
+
+  if (!initialLoadComplete || !activeDialogId) {
+    return (
+      <div className="flex justify-center items-center h-full">
+        <Icons.Spinner className="w-8 h-8 animate-spin text-accent" />
+        <p className="ml-2">Loading chats...</p>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -264,7 +350,28 @@ export function ChatInterface() {
                Chat
                {modelDisplayName && <span className="text-sm font-normal text-muted-foreground ml-1">({modelDisplayName})</span>}
              </CardTitle>
+             <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={handleAddDialog} className="border-input hover:bg-accent/10">
+                  <Icons.PlusSquare className="w-4 h-4 mr-2" /> New Chat
+                </Button>
+                {Object.keys(dialogs).length > 1 && (
+                  <Button variant="outline" size="sm" onClick={() => handleDeleteDialog(activeDialogId!)} className="border-destructive/50 text-destructive hover:bg-destructive/10">
+                    <Icons.Trash2 className="w-4 h-4 mr-2" /> Delete Chat
+                  </Button>
+                )}
+             </div>
           </div>
+          
+          <Tabs value={activeDialogId} onValueChange={setActiveDialogId} className="mt-2">
+            <TabsList className="w-full justify-start overflow-x-auto">
+              {Object.keys(dialogs).map((dialogId) => (
+                <TabsTrigger key={dialogId} value={dialogId} className="capitalize text-xs sm:text-sm">
+                  {dialogId.replace(/-/g, ' ')}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+
            {(isLoading || isGeneratingDialogImage) && (
             <Alert className="border-accent text-sm mt-2">
               <Icons.Search className="h-5 w-5 text-accent" />
@@ -275,10 +382,12 @@ export function ChatInterface() {
             </Alert>
           )}
         </CardHeader>
+
+        {/* TabContent is implicitly handled by rendering based on activeDialogId */}
         <CardContent className="flex-1 p-0 overflow-hidden">
           <ScrollArea ref={scrollAreaRef} className="h-full p-4 md:p-6">
             <div className="space-y-6">
-              {messages.map((message) => (
+              {currentMessages.map((message) => (
                 <div
                   key={message.id}
                   className={`flex items-end gap-3 ${
@@ -308,43 +417,49 @@ export function ChatInterface() {
                     ) : (
                       <>
                         {message.imageUrl && !message.imageError && (
-                          <div className="mb-2 rounded-md overflow-hidden border border-border">
-                             <Skeleton className="w-full aspect-square rounded-md bg-muted/50">
-                              <Image
+                           <div className="mb-2 rounded-md overflow-hidden border border-border relative bg-muted/50" style={{aspectRatio: '1/1', width: '300px', maxWidth: '100%'}}>
+                            <Skeleton className="absolute inset-0 w-full h-full rounded-md bg-muted/50 z-0" />
+                            <Image
                                 src={message.imageUrl}
                                 alt={message.text || "Generated AI Image"}
-                                width={300}
-                                height={300}
-                                className="object-contain w-full h-full"
+                                layout="fill"
+                                objectFit="contain"
+                                className="relative z-10"
                                 onLoadingComplete={(img) => {
-                                  const skeletonElement = img.parentElement as HTMLElement | null;
-                                  if (skeletonElement && skeletonElement.parentElement) {
-                                    (skeletonElement.parentElement as HTMLElement).style.display = 'none';
+                                  const skeletonElement = img.parentElement?.querySelector('.absolute.inset-0.w-full.h-full.rounded-md.bg-muted\\/50.z-0') as HTMLElement | null;
+                                  if (skeletonElement) {
+                                    skeletonElement.style.display = 'none';
                                   }
                                 }}
                                 onError={(e) => {
                                   console.error("Failed to load image:", (e.target as HTMLImageElement).src);
-                                  const skeletonElement = (e.target as HTMLImageElement).parentElement?.parentElement as HTMLElement | null;
-                                  if (skeletonElement) {
-                                      skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50', '!bg-transparent');
-                                      skeletonElement.classList.add('bg-destructive/10');
-                                      skeletonElement.style.display = 'flex';
+                                  const imageContainer = (e.target as HTMLImageElement).parentElement;
+                                  if(imageContainer){
+                                    const skeleton = imageContainer.querySelector('.absolute.inset-0.w-full.h-full.rounded-md.bg-muted\\/50.z-0') as HTMLElement | null;
+                                    if (skeleton) {
+                                      skeleton.style.display = 'flex'; // Ensure skeleton is visible
+                                      skeleton.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50');
+                                      skeleton.classList.add('bg-destructive/10');
+                                      skeleton.innerHTML = '<p class="text-xs text-destructive-foreground p-2 text-center">Error loading image</p>';
+                                    }
                                   }
-
                                   if (!message.imageError) {
                                     toast({
                                       variant: "destructive",
                                       title: "Image Load Error",
                                       description: "The generated image could not be displayed."
                                     });
-                                    setMessages(prevMessages => prevMessages.map(msg =>
-                                      msg.id === message.id ? { ...msg, imageError: true, imageUrl: undefined } : msg
-                                    ));
+                                    // Update specific message in its dialog
+                                    setDialogs(prevDialogs => {
+                                      const updatedMsgs = (prevDialogs[activeDialogId!] || []).map(msg =>
+                                        msg.id === message.id ? { ...msg, imageError: true, imageUrl: undefined } : msg
+                                      );
+                                      return {...prevDialogs, [activeDialogId!]: updatedMsgs};
+                                    });
                                   }
                                 }}
                                 data-ai-hint="generated art"
                               />
-                            </Skeleton>
                           </div>
                         )}
                         {(message.text || (!message.text && message.sender === 'bot' && message.imageError)) && <p className="whitespace-pre-wrap">{message.text || (message.imageError ? "Image could not be displayed." : "")}</p>}
@@ -461,3 +576,4 @@ export function ChatInterface() {
     </>
   );
 }
+
