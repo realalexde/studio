@@ -14,6 +14,7 @@ import {
   Download,
   Moon, // Added Moon icon
   X, // Added X for Close icon
+  ImagePlus, // Added ImagePlus for explicit image generation
   type LucideIcon,
 } from 'lucide-react';
 
@@ -34,5 +35,6 @@ export const Icons = {
   Download: Download,
   Moon: Moon, // Export Moon icon
   Close: X, // Added Close icon
+  ImagePlus: ImagePlus, // Export ImagePlus
 };
 
