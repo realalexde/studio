@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, FormEvent } from "react";
@@ -10,11 +11,13 @@ import { Icons } from "@/components/icons";
 import { generateEnhancedImage, GenerateEnhancedImageInput, GenerateEnhancedImageOutput } from "@/ai/flows/generate-enhanced-image";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch"; // Import Switch
 
 export function ImageStudio() {
   const [prompt, setPrompt] = useState("");
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [enhanceImage, setEnhanceImage] = useState(false); // State for the enhancement toggle
   const { toast } = useToast();
 
   const handleSubmit = async (e: FormEvent) => {
@@ -32,17 +35,19 @@ export function ImageStudio() {
     setGeneratedImageUrl(null);
 
     try {
-      const input: GenerateEnhancedImageInput = { prompt };
+      const input: GenerateEnhancedImageInput = { 
+        prompt,
+        enhance: enhanceImage // Pass the enhance option
+      };
       const result: GenerateEnhancedImageOutput = await generateEnhancedImage(input);
       setGeneratedImageUrl(result.imageUrl);
       toast({
         title: "Image Generated",
-        description: "Your image has been successfully generated.",
+        description: `Your image has been successfully generated ${enhanceImage ? 'with enhancement' : ''}.`,
       });
     } catch (error) {
       console.error("AI Image Generation Error:", error);
       const errorText = error instanceof Error ? error.message : "An unknown error occurred.";
-      // You might want to set a placeholder error image or message here
       toast({
         variant: "destructive",
         title: "Generation Error",
@@ -57,10 +62,10 @@ export function ImageStudio() {
     <Card className="w-full max-w-2xl mx-auto shadow-2xl bg-card/80 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="font-headline text-2xl text-foreground flex items-center gap-2">
-          <Icons.Image className="w-7 h-7 text-accent" /> AI Image Generator
+          <Icons.Image className="w-7 h-7 text-accent" /> AI Image Studio
         </CardTitle>
         <CardDescription>
-          Describe the image you want to create, and the AI will generate it using an enhanced process.
+          Describe the image you want to create. Optionally, enable enhancement for a more refined result.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -78,11 +83,21 @@ export function ImageStudio() {
             />
           </div>
 
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="enhance-image-toggle"
+              checked={enhanceImage}
+              onCheckedChange={setEnhanceImage}
+              disabled={isLoading}
+            />
+            <Label htmlFor="enhance-image-toggle">Enable Enhanced Refinement</Label>
+          </div>
+
           <div className="w-full aspect-square rounded-lg border border-dashed border-border bg-muted flex items-center justify-center overflow-hidden">
             {isLoading ? (
               <div className="flex flex-col items-center text-muted-foreground">
                 <Icons.Spinner className="w-12 h-12 animate-spin text-accent mb-4" />
-                <p>Generating your masterpiece...</p>
+                <p>Generating your masterpiece{enhanceImage ? ' with enhancement' : ''}...</p>
                 <Skeleton className="h-[300px] w-[300px] rounded-md mt-2" />
               </div>
             ) : generatedImageUrl ? (
@@ -116,3 +131,4 @@ export function ImageStudio() {
     </Card>
   );
 }
+
