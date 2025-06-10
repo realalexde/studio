@@ -60,10 +60,12 @@
   }
   body {
     @apply bg-background text-foreground;
-    /* Subtle gradient effect */
+    /* Subtle gradient effect - Commented out to test performance */
+    /*
     background-image: radial-gradient(ellipse at 70% 20%, hsla(var(--primary), 0.10) 0%, transparent 50%),
                       radial-gradient(ellipse at 30% 80%, hsla(var(--accent), 0.10) 0%, transparent 50%);
     background-attachment: fixed;
     background-size: 100% 100%;
+    */
   }
 }
