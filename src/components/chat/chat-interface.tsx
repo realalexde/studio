@@ -10,8 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
 import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, AiChatMessage } from "@/ai/flows/search-and-summarize";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useModel } from "@/contexts/model-context";
 import {
@@ -26,8 +25,6 @@ import {
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { generateEnhancedImage, GenerateEnhancedImageInput, GenerateEnhancedImageOutput } from "@/ai/flows/generate-enhanced-image";
-import { Switch } from "@/components/ui/switch";
 
 
 interface Message {
@@ -62,12 +59,6 @@ export function ChatInterface() {
   const [uploadAccompanyingText, setUploadAccompanyingText] = useState("");
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-
-  const [isGenerateImageDialogOpen, setIsGenerateImageDialogOpen] = useState(false);
-  const [generateImagePrompt, setGenerateImagePrompt] = useState("");
-  const [enhanceGeneratedImagePrompt, setEnhanceGeneratedImagePrompt] = useState(false);
-  const [isProcessingGeneration, setIsProcessingGeneration] = useState(false);
-
 
   const selectedModel = getSelectedModel();
   const modelDisplayName = selectedModel ? selectedModel.name : "";
@@ -328,52 +319,6 @@ export function ChatInterface() {
     };
   };
 
-  const handleGenerateImageInChat = async () => {
-    if (!generateImagePrompt.trim() || !activeDialogId) {
-      toast({ variant: "destructive", title: "Empty Prompt", description: "Please enter a prompt for the image."});
-      return;
-    }
-    setIsProcessingGeneration(true);
-    setIsGenerateImageDialogOpen(false);
-
-    const botLoadingMessageId = (Date.now() + 1).toString();
-    setDialogs(prev => ({ ...prev, [activeDialogId]: [ ...(prev[activeDialogId] || []), { id: botLoadingMessageId, text: `Generating image: "${generateImagePrompt}"...`, sender: "bot", isLoading: true }] }));
-    
-    setIsLoading(true);
-
-    try {
-      const flowInput: GenerateEnhancedImageInput = { 
-        prompt: generateImagePrompt,
-        enhance: enhanceGeneratedImagePrompt
-      };
-      const result: GenerateEnhancedImageOutput = await generateEnhancedImage(flowInput);
-      
-      setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
-        msg.id === botLoadingMessageId ? { 
-          ...msg, 
-          text: `Generated image for prompt: "${generateImagePrompt}" ${enhanceGeneratedImagePrompt ? '(enhanced)' : ''}`, 
-          imageUrl: result.imageUrl, 
-          isLoading: false, 
-          imageError: false 
-        } : msg
-      )}));
-      toast({ title: "Image Generated in Chat", description: "The AI has generated the image."});
-    } catch (error) {
-      console.error("AI Image Generation Error in Chat:", error);
-      const errorText = error instanceof Error ? error.message : "An unknown error occurred.";
-      setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
-          msg.id === botLoadingMessageId ? { ...msg, text: `Error generating image: ${errorText}`, isLoading: false, imageError: true } : msg
-      )}));
-      toast({ variant: "destructive", title: "Image Generation Error", description: errorText });
-    } finally {
-      setIsLoading(false);
-      setIsProcessingGeneration(false);
-      setGenerateImagePrompt("");
-      setEnhanceGeneratedImagePrompt(false);
-    }
-  };
-
-
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -393,11 +338,11 @@ export function ChatInterface() {
   return (
     <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
-        <CardTitle className="font-headline text-2xl text-foreground flex items-center gap-2 shrink-0">
+        <div className="font-headline text-2xl text-foreground flex items-center gap-2 shrink-0"> {/* Changed from CardTitle */}
           <Icons.Chat className="w-7 h-7 text-accent" />
           Chat
           {modelDisplayName && <span className="text-sm font-normal text-muted-foreground ml-1">({modelDisplayName})</span>}
-        </CardTitle>
+        </div>
         <div className="flex items-center gap-2 self-start sm:self-center">
           <Button variant="outline" size="sm" onClick={handleAddDialog} className="border-input hover:bg-accent/10">
             <Icons.PlusSquare className="w-4 h-4 mr-2" /> New Chat
@@ -469,20 +414,11 @@ export function ChatInterface() {
                                   }}
                                   onError={(e) => {
                                     console.error("Failed to load image:", (e.target as HTMLImageElement).src);
-                                    const skeletonContainer = (e.target as HTMLImageElement).parentElement;
-                                    if (skeletonContainer) {
-                                        const skeletonElement = skeletonContainer.querySelector('.absolute.inset-0.w-full.h-full.rounded-md.bg-muted\\/50.z-0') as HTMLElement | null;
-                                        if (skeletonElement && skeletonElement.style.display !== 'none') { 
-                                            skeletonElement.style.display = 'flex';
-                                            skeletonElement.style.alignItems = 'center';
-                                            skeletonElement.style.justifyContent = 'center';
-                                            skeletonElement.classList.remove('bg-muted/50');
-                                            skeletonElement.classList.add('bg-destructive/10');
-                                            skeletonElement.innerHTML = '<p class="text-xs text-destructive p-2 text-center">Error loading image</p>';
-                                        } else if (!skeletonElement) { 
-                                            skeletonContainer.classList.add('bg-destructive/10', 'flex', 'items-center', 'justify-center');
-                                            skeletonContainer.innerHTML = '<p class="text-xs text-destructive p-2 text-center">Error loading image</p>';
-                                        }
+                                    const skeletonElement = (e.target as HTMLImageElement).parentElement?.parentElement as HTMLElement | null;
+                                    if (skeletonElement) {
+                                        skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50', '!bg-transparent');
+                                        skeletonElement.classList.add('bg-destructive/10');
+                                        skeletonElement.innerHTML = '<p class="text-xs text-destructive p-2 text-center">Error loading image</p>';
                                     }
                                     if (!message.imageError) { 
                                       toast({ variant: "destructive", title: "Image Load Error", description: "The image could not be displayed."});
@@ -524,22 +460,11 @@ export function ChatInterface() {
                 variant="outline"
                 size="icon"
                 onClick={() => setIsUploadImageDialogOpen(true)}
-                disabled={isLoading || isProcessingUpload || isProcessingGeneration}
+                disabled={isLoading || isProcessingUpload}
                 className="border-input hover:bg-accent/10"
                 aria-label="Upload Image"
               >
                 <Icons.Paperclip className="w-5 h-5 text-accent" />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                onClick={() => setIsGenerateImageDialogOpen(true)}
-                disabled={isLoading || isProcessingUpload || isProcessingGeneration}
-                className="border-input hover:bg-accent/10"
-                aria-label="Generate Image with AI"
-              >
-                <Icons.ImagePlus className="w-5 h-5 text-accent" />
               </Button>
               <Textarea
                 value={currentInputText}
@@ -547,11 +472,11 @@ export function ChatInterface() {
                 onKeyDown={handleKeyDown}
                 placeholder="Ask Moonlight for information..."
                 className="flex-1 resize-none min-h-[40px] max-h-[120px] bg-input border-border focus-visible:ring-accent"
-                disabled={isLoading || isProcessingUpload || isProcessingGeneration}
+                disabled={isLoading || isProcessingUpload}
                 rows={1}
               />
-              <Button type="submit" disabled={isLoading || isProcessingUpload || isProcessingGeneration || !currentInputText.trim()} size="icon" className="bg-accent hover:bg-accent/90">
-                {(isLoading || isProcessingUpload || isProcessingGeneration) ? (
+              <Button type="submit" disabled={isLoading || isProcessingUpload || !currentInputText.trim()} size="icon" className="bg-accent hover:bg-accent/90">
+                {(isLoading || isProcessingUpload) ? (
                   <Icons.Spinner className="w-5 h-5 animate-spin" />
                 ) : (
                   <Icons.Send className="w-5 h-5" />
@@ -654,64 +579,6 @@ export function ChatInterface() {
                 <Icons.Send className="mr-2 h-4 w-4" />
               )}
               Send with Image
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Dialog for Generating Image in Chat */}
-      <Dialog open={isGenerateImageDialogOpen} onOpenChange={setIsGenerateImageDialogOpen}>
-        <DialogContent className="sm:max-w-lg bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-foreground">
-              <Icons.ImagePlus className="w-6 h-6 text-accent"/>
-              Generate Image with AI
-            </DialogTitle>
-            <DialogDescription>
-              Type a prompt for the image you want the AI to generate. Optionally, enhance the prompt for more detail.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-1 items-center gap-2">
-              <Label htmlFor="generate-image-prompt-dialog" className="text-muted-foreground">
-                Image Prompt
-              </Label>
-              <Textarea
-                id="generate-image-prompt-dialog"
-                value={generateImagePrompt}
-                onChange={(e) => setGenerateImagePrompt(e.target.value)}
-                placeholder="e.g., A futuristic cityscape at sunset"
-                className="bg-input border-input min-h-[80px]"
-                rows={3}
-                disabled={isProcessingGeneration}
-              />
-            </div>
-            <div className="flex items-center space-x-2 mt-2">
-              <Switch
-                id="enhance-generated-image-prompt-toggle"
-                checked={enhanceGeneratedImagePrompt}
-                onCheckedChange={setEnhanceGeneratedImagePrompt}
-                disabled={isProcessingGeneration}
-              />
-              <Label htmlFor="enhance-generated-image-prompt-toggle">Enhance Prompt for Detailed Image</Label>
-            </div>
-          </div>
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline" disabled={isProcessingGeneration} onClick={() => {setGenerateImagePrompt(""); setEnhanceGeneratedImagePrompt(false);}}>Cancel</Button>
-            </DialogClose>
-            <Button
-              type="button"
-              onClick={handleGenerateImageInChat}
-              disabled={!generateImagePrompt.trim() || isProcessingGeneration}
-              className="bg-accent hover:bg-accent/90"
-            >
-              {isProcessingGeneration ? (
-                <Icons.Spinner className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Icons.Brain className="mr-2 h-4 w-4" />
-              )}
-              Generate Image
             </Button>
           </DialogFooter>
         </DialogContent>
