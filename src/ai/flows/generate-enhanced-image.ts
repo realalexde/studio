@@ -41,7 +41,7 @@ const enhanceUserPromptPrompt = ai.definePrompt({
   name: 'enhanceUserPromptPrompt',
   input: { schema: EnhanceUserPromptInputSchema },
   output: { schema: EnhanceUserPromptOutputSchema },
-  prompt: `You are Moonlight, an AI assistant from Nexus, specializing in crafting highly detailed image generation prompts.
+  prompt: `You are Moonlight, an AI assistant specializing in crafting highly detailed image generation prompts.
 The user has provided the following initial prompt:
 "{{{originalPrompt}}}"
 
@@ -89,7 +89,7 @@ const generateEnhancedImageFlow = ai.defineFlow(
       model: 'googleai/gemini-2.0-flash-exp',
       config: {
         responseModalities: ['TEXT', 'IMAGE'],
-         safetySettings: [ // Added safety settings to be less restrictive for creative content
+         safetySettings: [ 
           { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
           { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
           { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -102,8 +102,8 @@ const generateEnhancedImageFlow = ai.defineFlow(
       throw new Error('Failed to generate image. The model did not return an image URL.');
     }
 
-    // Heuristic check for minimal/placeholder images
-    const MIN_IMAGE_DATA_URL_LENGTH = 500; // Adjusted threshold
+    
+    const MIN_IMAGE_DATA_URL_LENGTH = 500; 
     if (imageResult.media.url.startsWith('data:image/') && imageResult.media.url.length < MIN_IMAGE_DATA_URL_LENGTH) {
         console.warn(`Image generation returned a very small image (length: ${imageResult.media.url.length}). Prompt: ${finalPrompt}. Treating as failure.`);
         throw new Error('Failed to generate image: Model returned a minimal or placeholder image.');

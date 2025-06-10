@@ -38,7 +38,7 @@ export function SidebarNav() {
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2">
           <Icons.Logo className="w-8 h-8 text-accent" />
-          <h1 className="text-xl font-semibold text-foreground font-headline">Nexus AI</h1>
+          <h1 className="text-xl font-semibold text-foreground font-headline">Moonlight AI</h1>
         </div>
       </SidebarHeader>
       <Separator className="my-2" />
@@ -62,7 +62,6 @@ export function SidebarNav() {
       <Separator className="my-2" />
       <SidebarFooter className="p-4 space-y-4">
          <ModelSelector />
-        {/* Removed Nexus AI branding panel */}
       </SidebarFooter>
     </>
   );

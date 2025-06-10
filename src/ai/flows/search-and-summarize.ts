@@ -101,8 +101,8 @@ const generateImageTool = ai.defineTool(
       throw new Error('Image generation failed: Model did not return an image URL.');
     }
 
-    // Heuristic check for minimal/placeholder images
-    const MIN_IMAGE_DATA_URL_LENGTH = 500; // Adjusted threshold based on typical small placeholders
+    
+    const MIN_IMAGE_DATA_URL_LENGTH = 500; 
     if (imageResult.media.url.startsWith('data:image/') && imageResult.media.url.length < MIN_IMAGE_DATA_URL_LENGTH) {
         console.warn(`Image generation returned a very small image (length: ${imageResult.media.url.length}). Treating as failure. Prompt: ${input.imagePrompt}`);
         throw new Error('Image generation failed: Model returned a minimal or placeholder image.');
@@ -118,7 +118,7 @@ const searchAndSummarizePrompt = ai.definePrompt({
   input: {schema: SearchAndSummarizeInputSchema},
   output: {schema: SearchAndSummarizeOutputSchema},
   tools: [internetSearchTool, generateImageTool],
-  prompt: `You are Moonlight, an AI assistant from Nexus. When asked who you are, you should identify yourself as such.
+  prompt: `You are Moonlight, an AI assistant. When asked who you are, you should identify yourself as such.
 
 **Language Matching:**
 You MUST detect the language of the User's LATEST Question/Request ("{{{query}}}").

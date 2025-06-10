@@ -39,16 +39,14 @@ interface Message {
   imageError?: boolean;
 }
 
-const CHAT_DIALOGS_STORAGE_KEY = "nexusAiChatDialogs_v1";
-const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "nexusAiChatActiveDialogId_v1";
-// Removed CHAT_NEXT_DIALOG_ID_COUNTER_STORAGE_KEY
+const CHAT_DIALOGS_STORAGE_KEY = "moonlightAiChatDialogs_v1";
+const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "moonlightAiChatActiveDialogId_v1";
 
 const DEFAULT_DIALOG_ID = "chat-1";
 
 export function ChatInterface() {
   const [dialogs, setDialogs] = useState<Record<string, Message[]>>({});
   const [activeDialogId, setActiveDialogId] = useState<string | null>(null);
-  // Removed nextDialogIdCounter state
   
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -79,7 +77,7 @@ export function ChatInterface() {
             loadedDialogs[id] = parsedDialogs[id].map((msg: any) => ({
               ...msg,
               isLoading: false,
-              imageError: msg.imageError || false, // Ensure imageError is initialized
+              imageError: msg.imageError || false, 
               imageUrl: msg.imageError ? undefined : msg.imageUrl,
             })).filter(Boolean);
           }
@@ -188,7 +186,7 @@ export function ChatInterface() {
       const remainingDialogIds = Object.keys(updatedDialogs);
       setActiveDialogId(remainingDialogIds[0] || null);
       if(remainingDialogIds.length === 0) { 
-         handleAddDialog(); // Should ensure a default chat is created if all are deleted
+         handleAddDialog(); 
       }
     }
   };
@@ -222,12 +220,12 @@ export function ChatInterface() {
     setIsLoading(true);
 
     const historyForAI: AiChatMessage[] = (dialogs[activeDialogId] || [])
-      .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl)) // Ensure userMessage for history is taken from dialogs
+      .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl)) 
       .map(({ sender, text }) => ({ sender, text: text || "" }));
       
     try {
       const flowInput: SearchAndSummarizeInput = {
-        query: userMessage.text, // Query is still the fresh user input text
+        query: userMessage.text, 
         history: historyForAI.slice(0, -1) 
       };
       const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
@@ -437,7 +435,7 @@ export function ChatInterface() {
                                   const skeletonElement = (e.target as HTMLImageElement).parentElement?.parentElement as HTMLElement | null;
                                   if (skeletonElement) {
                                     skeletonElement.style.display = 'flex'; 
-                                    skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50', '!bg-transparent');
+                                    skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50');
                                     skeletonElement.classList.add('bg-destructive/10', 'items-center', 'justify-center');
                                     skeletonElement.innerHTML = '<p class="text-xs text-destructive-foreground p-2 text-center">Error loading image</p>';
                                   }

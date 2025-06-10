@@ -3,8 +3,8 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'Nexus AI',
-  description: 'Your intelligent assistant for chat, code, and image generation.',
+  title: 'Moonlight AI',
+  description: 'Your intelligent assistant for chat, code, and image generation, powered by Moonlight.',
 };
 
 export default function RootLayout({
