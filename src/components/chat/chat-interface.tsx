@@ -23,6 +23,11 @@ interface Message {
   isLoading?: boolean;
 }
 
+export type AiChatMessage = {
+  sender: "user" | "bot";
+  text: string;
+};
+
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -46,7 +51,9 @@ export function ChatInterface() {
       text: input,
       sender: "user",
     };
-    setMessages((prev) => [...prev, userMessage]);
+    
+    const currentMessages = [...messages, userMessage];
+    setMessages(currentMessages);
     
     const botLoadingMessageId = (Date.now() + 1).toString();
     const botLoadingMessage: Message = {
@@ -60,17 +67,24 @@ export function ChatInterface() {
     setInput("");
     setIsLoading(true);
 
+    const historyForAI: AiChatMessage[] = currentMessages
+      .filter(msg => !msg.isLoading && msg.text.trim() !== "") // Don't send loading or empty messages
+      .map(({ sender, text }) => ({ sender, text }));
+
     try {
       let botResponseText = "";
       if (useSearch) {
-        // Toast is still useful for immediate feedback
-        // toast({ title: "Searching...", description: "Using external search to enhance response." });
-        const searchInput: SearchAndSummarizeInput = { query: input || "Provide general information based on search." };
+        const searchInput: SearchAndSummarizeInput = { 
+          query: input || "Provide general information based on search.",
+          history: historyForAI.slice(-10) // Send last 10 messages for context
+        };
         const result = await searchAndSummarize(searchInput);
         botResponseText = result.summary;
-        // Don't reset useSearch here, let the alert handle its visibility based on isLoading
       } else {
-        const enhancedResponseInput: GenerateEnhancedResponseInput = { query: input };
+        const enhancedResponseInput: GenerateEnhancedResponseInput = { 
+          query: input,
+          history: historyForAI.slice(-10) // Send last 10 messages for context
+        };
         const result = await generateEnhancedResponse(enhancedResponseInput);
         botResponseText = result.enhancedResponse;
       }
@@ -100,9 +114,6 @@ export function ChatInterface() {
       });
     } finally {
       setIsLoading(false);
-      // If search was used, toggle it off after completion if desired,
-      // or keep it on for subsequent messages. For now, let's keep it as is.
-      // if (useSearch) setUseSearch(false); // Optional: reset search toggle
     }
   };
   

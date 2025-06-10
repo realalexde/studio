@@ -1,9 +1,10 @@
+
 'use server';
 
 /**
- * @fileOverview A Genkit flow for generating enhanced responses by having the AI reason through the request.
+ * @fileOverview A Genkit flow for generating enhanced responses by having the AI reason through the request, considering conversation history.
  *
- * - generateEnhancedResponse - A function that generates an enhanced response based on the input query.
+ * - generateEnhancedResponse - A function that generates an enhanced response based on the input query and history.
  * - GenerateEnhancedResponseInput - The input type for the generateEnhancedResponse function.
  * - GenerateEnhancedResponseOutput - The output type for the generateEnhancedResponse function.
  */
@@ -11,8 +12,15 @@
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
+const ChatMessageSchema = z.object({
+  sender: z.enum(["user", "bot"]),
+  text: z.string(),
+});
+export type AiChatMessage = z.infer<typeof ChatMessageSchema>;
+
 const GenerateEnhancedResponseInputSchema = z.object({
-  query: z.string().describe('The user query to be processed.'),
+  query: z.string().describe('The current user query to be processed.'),
+  history: z.array(ChatMessageSchema).optional().describe('The conversation history to provide context. The last message in history is the current query by the user if not empty.'),
 });
 export type GenerateEnhancedResponseInput = z.infer<typeof GenerateEnhancedResponseInputSchema>;
 
@@ -25,29 +33,65 @@ export async function generateEnhancedResponse(input: GenerateEnhancedResponseIn
   return generateEnhancedResponseFlow(input);
 }
 
+const AnalyzeQueryInputSchema = z.object({
+  query: z.string().describe('The current user query.'),
+  history: z.array(ChatMessageSchema).optional().describe('The conversation history.'),
+});
+
 const analyzeQueryPrompt = ai.definePrompt({
   name: 'analyzeQueryPrompt',
-  input: {schema: GenerateEnhancedResponseInputSchema},
+  input: {schema: AnalyzeQueryInputSchema },
   output: {
     schema: z.object({
-      analysis: z.string().describe('A detailed analysis of the user query, identifying key aspects and potential sub-queries needed for a comprehensive answer.'),
+      analysis: z.string().describe('A detailed analysis of the user query, identifying key aspects and potential sub-queries needed for a comprehensive answer. Consider the conversation history for context.'),
     })
   },
-  prompt: `You are an AI assistant tasked with analyzing user queries to provide enhanced responses. Analyze the following query and identify the key aspects and potential sub-queries needed for a comprehensive answer.\n\nQuery: {{{query}}}`,
+  prompt: `You are an AI assistant tasked with analyzing user queries to provide enhanced responses.
+Conversation History (if any, most recent messages last):
+{{#if history}}
+{{#each history}}
+{{this.sender}}: {{this.text}}
+{{/each}}
+{{else}}
+No conversation history provided.
+{{/if}}
+
+Based on the full conversation history and the LATEST user query below, analyze the query.
+Identify key aspects, entities, and the user's intent. If the query is a follow-up, explain how it relates to the history.
+
+Latest User Query: {{{query}}}
+
+Your analysis:`,
+});
+
+const SynthesizeResponseInputSchema = z.object({
+  query: z.string().describe('The original current user query.'),
+  analysis: z.string().describe('The detailed analysis of the user query.'),
+  history: z.array(ChatMessageSchema).optional().describe('The conversation history.'),
 });
 
 const synthesizeResponsePrompt = ai.definePrompt({
   name: 'synthesizeResponsePrompt',
-  input: {
-    schema: z.object({
-      query: z.string().describe('The original user query.'),
-      analysis: z.string().describe('The detailed analysis of the user query.'),
-    })
-  },
-  output: {
-    schema: GenerateEnhancedResponseOutputSchema
-  },
-  prompt: `You are an AI assistant tasked with generating enhanced responses to user queries. Based on the following analysis of the query, synthesize a comprehensive and thoughtful response.\n\nQuery: {{{query}}}\nAnalysis: {{{analysis}}}\n\nEnhanced Response:`, 
+  input: { schema: SynthesizeResponseInputSchema },
+  output: { schema: GenerateEnhancedResponseOutputSchema },
+  prompt: `You are an AI assistant tasked with generating enhanced responses to user queries.
+Conversation History (if any, most recent messages last):
+{{#if history}}
+{{#each history}}
+{{this.sender}}: {{this.text}}
+{{/each}}
+{{else}}
+No conversation history provided.
+{{/if}}
+
+The LATEST user query was: "{{{query}}}"
+Your analysis of this query is: "{{{analysis}}}"
+
+Based on this latest query, your analysis, and the entire conversation history, synthesize a comprehensive and thoughtful response.
+If the latest query is a follow-up question (e.g., uses pronouns like "it", "that", "what about them?"), use the history to understand the context and what "it" refers to.
+Ensure your response directly addresses the LATEST user query: "{{{query}}}".
+
+Enhanced Response:`, 
 });
 
 const generateEnhancedResponseFlow = ai.defineFlow(
@@ -56,8 +100,8 @@ const generateEnhancedResponseFlow = ai.defineFlow(
     inputSchema: GenerateEnhancedResponseInputSchema,
     outputSchema: GenerateEnhancedResponseOutputSchema,
   },
-  async input => {
-    const {output: analysisResult} = await analyzeQueryPrompt(input);
+  async (input: GenerateEnhancedResponseInput) => {
+    const {output: analysisResult} = await analyzeQueryPrompt({ query: input.query, history: input.history });
 
     if (!analysisResult || typeof analysisResult.analysis !== 'string') {
       console.error("Analysis step failed or returned invalid data. AnalysisResult:", analysisResult);
@@ -67,6 +111,7 @@ const generateEnhancedResponseFlow = ai.defineFlow(
     const {output: enhancedResponseResult} = await synthesizeResponsePrompt({
       query: input.query,
       analysis: analysisResult.analysis,
+      history: input.history,
     });
 
     if (!enhancedResponseResult) {
