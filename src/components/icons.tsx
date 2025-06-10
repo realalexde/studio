@@ -10,6 +10,7 @@ import {
   Settings2,
   Search,
   Brain,
+  Download, // Added Download icon
   type LucideIcon,
 } from 'lucide-react';
 
@@ -27,4 +28,5 @@ export const Icons = {
   Settings: Settings2,
   Search: Search,
   Brain: Brain,
+  Download: Download, // Added Download icon
 };

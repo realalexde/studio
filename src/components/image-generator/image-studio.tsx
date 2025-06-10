@@ -11,13 +11,13 @@ import { Icons } from "@/components/icons";
 import { generateEnhancedImage, GenerateEnhancedImageInput, GenerateEnhancedImageOutput } from "@/ai/flows/generate-enhanced-image";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch } from "@/components/ui/switch"; // Import Switch
+import { Switch } from "@/components/ui/switch";
 
 export function ImageStudio() {
   const [prompt, setPrompt] = useState("");
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [enhanceImage, setEnhanceImage] = useState(false); // State for the enhancement toggle
+  const [enhancePrompt, setEnhancePrompt] = useState(false); // Updated state name
   const { toast } = useToast();
 
   const handleSubmit = async (e: FormEvent) => {
@@ -37,13 +37,13 @@ export function ImageStudio() {
     try {
       const input: GenerateEnhancedImageInput = { 
         prompt,
-        enhance: enhanceImage // Pass the enhance option
+        enhance: enhancePrompt // Pass the enhance option
       };
       const result: GenerateEnhancedImageOutput = await generateEnhancedImage(input);
       setGeneratedImageUrl(result.imageUrl);
       toast({
         title: "Image Generated",
-        description: `Your image has been successfully generated ${enhanceImage ? 'with enhancement' : ''}.`,
+        description: `Your image has been successfully generated ${enhancePrompt ? 'using an enhanced prompt' : ''}.`,
       });
     } catch (error) {
       console.error("AI Image Generation Error:", error);
@@ -58,6 +58,26 @@ export function ImageStudio() {
     }
   };
 
+  const handleDownloadImage = () => {
+    if (!generatedImageUrl) return;
+    const link = document.createElement('a');
+    link.href = generatedImageUrl;
+    
+    // Create a filename from the prompt, or a default one
+    // Sanitize the prompt to create a valid filename
+    const safePrompt = prompt.trim() ? prompt.trim().replace(/[^a-z0-9_.-]/gi, '_').slice(0, 50) : 'ai-image';
+    const filename = `${safePrompt}.png`;
+
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast({
+      title: "Image Download Started",
+      description: `Downloading ${filename}`,
+    });
+  };
+
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-2xl bg-card/80 backdrop-blur-sm">
       <CardHeader>
@@ -65,7 +85,7 @@ export function ImageStudio() {
           <Icons.Image className="w-7 h-7 text-accent" /> AI Image Studio
         </CardTitle>
         <CardDescription>
-          Describe the image you want to create. Optionally, enable enhancement for a more refined result.
+          Describe the image you want to create. Optionally, enable prompt enhancement for more detailed generation.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -77,7 +97,7 @@ export function ImageStudio() {
               type="text"
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
-              placeholder="e.g., A futuristic cityscape at sunset, cyberpunk style"
+              placeholder="e.g., A serene alien jungle at twilight"
               className="mt-1 bg-input border-border focus-visible:ring-accent"
               disabled={isLoading}
             />
@@ -85,19 +105,19 @@ export function ImageStudio() {
 
           <div className="flex items-center space-x-2">
             <Switch
-              id="enhance-image-toggle"
-              checked={enhanceImage}
-              onCheckedChange={setEnhanceImage}
+              id="enhance-prompt-toggle"
+              checked={enhancePrompt}
+              onCheckedChange={setEnhancePrompt}
               disabled={isLoading}
             />
-            <Label htmlFor="enhance-image-toggle">Enable Enhanced Refinement</Label>
+            <Label htmlFor="enhance-prompt-toggle">Enhance Prompt for Detailed Image</Label>
           </div>
 
           <div className="w-full aspect-square rounded-lg border border-dashed border-border bg-muted flex items-center justify-center overflow-hidden">
             {isLoading ? (
               <div className="flex flex-col items-center text-muted-foreground">
                 <Icons.Spinner className="w-12 h-12 animate-spin text-accent mb-4" />
-                <p>Generating your masterpiece{enhanceImage ? ' with enhancement' : ''}...</p>
+                <p>Generating your masterpiece{enhancePrompt ? ' with enhanced prompt' : ''}...</p>
                 <Skeleton className="h-[300px] w-[300px] rounded-md mt-2" />
               </div>
             ) : generatedImageUrl ? (
@@ -117,7 +137,7 @@ export function ImageStudio() {
             )}
           </div>
         </CardContent>
-        <CardFooter>
+        <CardFooter className="flex flex-col sm:flex-row gap-2 items-center">
           <Button type="submit" disabled={isLoading} className="w-full sm:w-auto bg-accent hover:bg-accent/90">
             {isLoading ? (
               <Icons.Spinner className="mr-2 h-4 w-4 animate-spin" />
@@ -126,9 +146,18 @@ export function ImageStudio() {
             )}
             Generate Image
           </Button>
+          {generatedImageUrl && !isLoading && (
+            <Button
+              variant="outline"
+              onClick={handleDownloadImage}
+              className="w-full sm:w-auto"
+            >
+              <Icons.Download className="mr-2 h-4 w-4" />
+              Download Image
+            </Button>
+          )}
         </CardFooter>
       </form>
     </Card>
   );
 }
-

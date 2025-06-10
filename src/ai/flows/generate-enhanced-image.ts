@@ -2,9 +2,11 @@
 'use server';
 
 /**
- * @fileOverview Image generation flow. Can generate a base image or an enhanced image using a two-step process.
+ * @fileOverview Image generation flow.
+ * Can generate an image directly from a prompt, or enhance the user's prompt
+ * first for more detailed image generation before creating the image.
  *
- * - generateEnhancedImage - A function that generates an image based on a text prompt, with an option for enhancement.
+ * - generateEnhancedImage - A function that generates an image based on a text prompt, with an option for prompt enhancement.
  * - GenerateEnhancedImageInput - The input type for the generateEnhancedImage function.
  * - GenerateEnhancedImageOutput - The return type for the generateEnhancedImage function.
  */
@@ -14,7 +16,7 @@ import {z} from 'genkit';
 
 const GenerateEnhancedImageInputSchema = z.object({
   prompt: z.string().describe('The prompt for generating the image.'),
-  enhance: z.boolean().optional().describe('Whether to apply a second enhancement pass to the image. Defaults to false.'),
+  enhance: z.boolean().optional().describe('Whether to first enhance the prompt for more detailed image generation. Defaults to false.'),
 });
 export type GenerateEnhancedImageInput = z.infer<typeof GenerateEnhancedImageInputSchema>;
 
@@ -27,30 +29,40 @@ export async function generateEnhancedImage(input: GenerateEnhancedImageInput): 
   return generateEnhancedImageFlow(input);
 }
 
-// These prompt definitions are not directly used by the flow below,
-// but are kept for potential future use or direct invocation.
-const refineImagePrompt = ai.definePrompt({
-  name: 'refineImagePrompt',
-  input: {schema: z.object({baseImage: z.string().describe('Base64 encoded image'), prompt: z.string()})},
-  output: {schema: z.object({imageUrl: z.string()})},
-  prompt: [
-    {media: {url: '{{{baseImage}}}'}},
-    {text: 'Refine the details and improve the overall quality of this image based on the following prompt: {{{prompt}}}. Focus on photorealism, intricate textures, and dynamic lighting.'},
-  ],
-  config: {
-    responseModalities: ['TEXT', 'IMAGE'],
-  },
+const EnhanceUserPromptInputSchema = z.object({
+  originalPrompt: z.string().describe('The user\'s original, potentially brief, prompt for image generation.'),
 });
 
-const generateBaseImagePrompt = ai.definePrompt({
-  name: 'generateBaseImagePrompt',
-  input: {schema: GenerateEnhancedImageInputSchema}, // Note: this schema includes `enhance` but it's not used by this specific prompt directly
-  output: {schema: z.object({imageUrl: z.string()})},
-  prompt: 'Generate an image based on the following prompt: {{{prompt}}}.',
-  config: {
-    responseModalities: ['TEXT', 'IMAGE'],
-  },
+const EnhanceUserPromptOutputSchema = z.object({
+  enhancedPrompt: z.string().describe('A highly detailed and descriptive prompt, expanded from the user\'s original prompt, suitable for high-quality image generation.'),
 });
+
+const enhanceUserPromptPrompt = ai.definePrompt({
+  name: 'enhanceUserPromptPrompt',
+  input: { schema: EnhanceUserPromptInputSchema },
+  output: { schema: EnhanceUserPromptOutputSchema },
+  prompt: `You are an AI assistant specializing in crafting highly detailed image generation prompts.
+The user has provided the following initial prompt:
+"{{{originalPrompt}}}"
+
+Your task is to expand this user's prompt into a much more detailed and descriptive prompt. This enhanced prompt will be fed into an advanced AI image generation model.
+Focus on elaborating and adding details related to:
+- **Visual Style:** (e.g., photorealistic, oil painting, watercolor, 3D render, pixel art, anime, cyberpunk, fantasy, art deco, impressionistic, etc.)
+- **Subject Details:** (Describe the main subject(s) with specificity. Include features, colors, textures, clothing, expressions, poses, and any important characteristics.)
+- **Setting/Background:** (Describe the environment. Is it indoors, outdoors, abstract? What are the key elements of the background? Time of day?)
+- **Composition & Framing:** (e.g., close-up, portrait, landscape, wide shot, worms-eye view, bird's-eye view, rule of thirds, symmetrical, dynamic angle.)
+- **Lighting:** (e.g., soft lighting, dramatic cinematic lighting, studio lighting, volumetric lighting, neon glow, golden hour, moody, bright and airy.)
+- **Color Palette:** (e.g., vibrant, monochrome, pastel, sepia, cool tones, warm tones, specific color combinations.)
+- **Artistic Elements & Mood:** (e.g., influence of specific artists, specific textures, overall mood like serene, chaotic, joyful, mysterious, epic.)
+- **Level of Detail:** (e.g., intricate details, hyperrealistic, stylized.)
+- **Negative Prompts (Optional but helpful):** Briefly mention what to avoid if it's critical (e.g., "no text", "avoid blurry").
+
+The final enhanced prompt should be a rich paragraph or a series of descriptive phrases.
+Return ONLY the enhanced prompt text itself. Do not include any conversational lead-in, explanations, or markdown formatting.
+
+Enhanced Prompt:`,
+});
+
 
 const generateEnhancedImageFlow = ai.defineFlow(
   {
@@ -59,40 +71,37 @@ const generateEnhancedImageFlow = ai.defineFlow(
     outputSchema: GenerateEnhancedImageOutputSchema,
   },
   async (input: GenerateEnhancedImageInput) => {
-    // Generate initial image
-    const baseImageResult = await ai.generate({
-      prompt: input.prompt,
+    let finalPrompt = input.prompt;
+
+    if (input.enhance) {
+      const { output: enhancedPromptResult } = await enhanceUserPromptPrompt({ originalPrompt: input.prompt });
+      if (!enhancedPromptResult?.enhancedPrompt) {
+        console.warn("Prompt enhancement failed, using original prompt.");
+        // Potentially throw an error or use original prompt as fallback
+      } else {
+        finalPrompt = enhancedPromptResult.enhancedPrompt;
+        console.log("Using enhanced prompt:", finalPrompt);
+      }
+    }
+
+    const imageResult = await ai.generate({
+      prompt: finalPrompt,
       model: 'googleai/gemini-2.0-flash-exp',
       config: {
         responseModalities: ['TEXT', 'IMAGE'],
+         safetySettings: [ // Added safety settings to be less restrictive for creative content
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
+        ],
       },
     });
 
-    if (!baseImageResult.media?.url) {
-      throw new Error('Failed to generate base image.');
+    if (!imageResult.media?.url) {
+      throw new Error('Failed to generate image. The model did not return an image URL.');
     }
 
-    if (input.enhance) {
-      // Refine the image
-      const refinedImageResult = await ai.generate({
-        prompt: [
-          {media: {url: baseImageResult.media.url}},
-          {text: `Refine the details and improve the overall quality of this image based on the following prompt: ${input.prompt}. Focus on photorealism, intricate textures, and dynamic lighting.`},
-        ],
-        model: 'googleai/gemini-2.0-flash-exp',
-        config: {
-          responseModalities: ['TEXT', 'IMAGE'],
-        },
-      });
-
-      if (!refinedImageResult.media?.url) {
-        throw new Error('Failed to generate refined image.');
-      }
-      return {imageUrl: refinedImageResult.media.url};
-    } else {
-      // If not enhancing, return the base image
-      return {imageUrl: baseImageResult.media.url};
-    }
+    return {imageUrl: imageResult.media.url};
   }
 );
-
