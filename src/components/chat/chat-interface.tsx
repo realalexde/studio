@@ -117,9 +117,10 @@ export function ChatInterface() {
     <Card className="w-full h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)] flex flex-col shadow-2xl bg-card/80 backdrop-blur-sm">
       <CardHeader className="border-b border-border">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-           <CardTitle className="font-headline text-2xl text-foreground">
+           <CardTitle className="font-headline text-2xl text-foreground flex items-center gap-2">
+             <Icons.Chat className="w-7 h-7 text-accent" />
              Chat 
-             {modelDisplayName && <span className="text-sm font-normal text-muted-foreground ml-2">({modelDisplayName})</span>}
+             {modelDisplayName && <span className="text-sm font-normal text-muted-foreground ml-1">({modelDisplayName})</span>}
            </CardTitle>
         </div>
          {isLoading && (
