@@ -17,9 +17,9 @@ import { ModelSelector } from "./model-selector";
 import React from "react";
 
 const navItems = [
-  { href: "/chat", label: "AI Chat", icon: Icons.Chat },
-  { href: "/visual-code", label: "AI Visual Code", icon: Icons.Code },
-  { href: "/image-generator", label: "AI Image Generator", icon: Icons.Image },
+  { href: "/chat", label: "Chat", icon: Icons.Chat },
+  { href: "/visual-code", label: "Visual Code", icon: Icons.Code },
+  { href: "/image-generator", label: "Image Generator", icon: Icons.Image },
 ];
 
 export function SidebarNav() {
