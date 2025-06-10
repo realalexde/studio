@@ -25,7 +25,7 @@ interface Message {
   imageError?: boolean; // Flag to track if an image error has been reported
 }
 
-const CHAT_HISTORY_LOCAL_STORAGE_KEY = "chatHistory_v2";
+const CHAT_HISTORY_LOCAL_STORAGE_KEY = "chatHistory_v2_localStorage";
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -48,11 +48,9 @@ export function ChatInterface() {
           setMessages(
             loadedMessages.filter(msg =>
               typeof msg.id === 'string' &&
-              // A message is valid if it has text, or an imageUrl (even if it previously errored and imageUrl is now undefined but imageError is true)
               (typeof msg.text === 'string' || typeof msg.imageUrl === 'string' || (msg.imageUrl === undefined && msg.imageError === true)) &&
-              (msg.sender === 'user' || msg.sender === 'bot') &&
-              typeof msg.isLoading === 'boolean' // Ensure isLoading exists, even if false
-            ).map(msg => ({ // Ensure isLoading is false for all loaded messages, and imageUrl is handled with imageError
+              (msg.sender === 'user' || msg.sender === 'bot')
+            ).map(msg => ({ 
               ...msg,
               isLoading: false, 
               imageUrl: msg.imageError ? undefined : msg.imageUrl,
@@ -62,7 +60,7 @@ export function ChatInterface() {
       }
     } catch (error) {
       console.error("Failed to load chat history from localStorage:", error);
-      localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY); // Clear corrupted history
+      localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY); 
       toast({
         variant: "destructive",
         title: "Chat History Error",
@@ -82,24 +80,28 @@ export function ChatInterface() {
     }
 
     try {
-      // Only save if there are messages and none are in a loading state
       if (messages.length > 0 && !messages.some(msg => msg.isLoading)) {
         const messagesToSave = messages.map(({ isLoading, ...rest }) => {
-          // If imageError is true, imageUrl should already be undefined from error handling.
-          // This ensures it's explicitly undefined in saved data if imageError is true.
           return rest.imageError ? { ...rest, imageUrl: undefined } : rest;
         });
         const messagesJson = JSON.stringify(messagesToSave);
         localStorage.setItem(CHAT_HISTORY_LOCAL_STORAGE_KEY, messagesJson);
       } else if (messages.length === 0 && initialLoadAttempted) {
-        // If messages become empty *after* initial load, clear storage
-        localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
+        // Only clear if explicitly empty AFTER initial load and not if it's the initial state of an empty cookie
+        const currentCookie = localStorage.getItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
+        if (currentCookie && currentCookie !== "[]") { // Check if cookie exists and isn't already an empty array
+            localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
+        }
       }
     } catch (error) {
       console.error("Failed to save chat history to localStorage:", error);
-      // Optionally, inform the user about save failure
+      toast({ // Added toast as it's a dependency
+        variant: "destructive",
+        title: "Save Error",
+        description: "Could not save chat history.",
+      });
     }
-  }, [messages, initialLoadAttempted]);
+  }, [messages, initialLoadAttempted, toast]);
 
   const handleSendMessage = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -129,7 +131,7 @@ export function ChatInterface() {
     setIsLoading(true);
 
     const historyForAI: AiChatMessage[] = [...messages, userMessage]
-      .filter(msg => !msg.isLoading && (msg.text.trim() !== "" || msg.imageUrl)) // Include messages that are just images
+      .filter(msg => !msg.isLoading && (msg.text.trim() !== "" || msg.imageUrl)) 
       .map(({ sender, text }) => ({ sender, text: text || "" }));
 
     try {
@@ -228,7 +230,7 @@ export function ChatInterface() {
                     <>
                       {message.imageUrl && !message.imageError && (
                         <div className="mb-2 rounded-md overflow-hidden border border-border">
-                           <Skeleton className="w-full aspect-square rounded-md bg-muted/50"> {/* Initial classes */}
+                           <Skeleton className="w-full aspect-square rounded-md bg-muted/50">
                             <Image
                               src={message.imageUrl}
                               alt={message.text || "Generated AI Image"}
@@ -236,7 +238,6 @@ export function ChatInterface() {
                               height={300}
                               className="object-contain w-full h-full"
                               onLoadingComplete={(img) => {
-                                // Target the Skeleton (parent of Next/Image's wrapper span)
                                 const skeletonElement = img.parentElement?.parentElement;
                                 if (skeletonElement) {
                                   skeletonElement.classList.remove('bg-muted/50', 'animate-pulse');
@@ -245,15 +246,13 @@ export function ChatInterface() {
                               }}
                               onError={(e) => {
                                 console.error("Failed to load image:", e.currentTarget.src);
-                                // Target the Skeleton (parent of Next/Image's wrapper span)
                                 const skeletonElement = e.currentTarget.parentElement?.parentElement;
                                 if (skeletonElement) {
                                     skeletonElement.classList.remove('animate-pulse', 'bg-muted/50');
-                                    // Optionally add a class to indicate error state on the skeleton
                                     skeletonElement.classList.add('!bg-destructive/10'); 
                                 }
 
-                                if (!message.imageError) { // Only toast and update state once
+                                if (!message.imageError) { 
                                   toast({
                                     variant: "destructive",
                                     title: "Image Load Error",
@@ -269,7 +268,6 @@ export function ChatInterface() {
                           </Skeleton>
                         </div>
                       )}
-                      {/* Render text if it exists, OR if it's a bot message that was supposed to be an image but errored */}
                       {(message.text || (!message.text && message.sender === 'bot' && message.imageError)) && <p className="whitespace-pre-wrap">{message.text || (message.imageError ? "Image could not be displayed." : "")}</p>}
                     </>
                   )}
@@ -293,7 +291,7 @@ export function ChatInterface() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask Moonlight for information or to generate an image..."
+            placeholder="Ask Moonlight for information..."
             className="flex-1 resize-none min-h-[40px] max-h-[120px] bg-input border-border focus-visible:ring-accent"
             disabled={isLoading}
             rows={1}
@@ -311,4 +309,6 @@ export function ChatInterface() {
     </Card>
   );
 }
+    
+
     
