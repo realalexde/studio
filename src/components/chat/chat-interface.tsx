@@ -24,13 +24,13 @@ interface Message {
   imageUrl?: string;
 }
 
-const CHAT_HISTORY_COOKIE = "chatHistory";
+const CHAT_HISTORY_LOCAL_STORAGE_KEY = "chatHistory";
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [initialCookieLoadAttempted, setInitialCookieLoadAttempted] = useState(false);
+  const [initialLoadAttempted, setInitialLoadAttempted] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { getSelectedModel } = useModel();
@@ -38,92 +38,66 @@ export function ChatInterface() {
   const selectedModel = getSelectedModel();
   const modelDisplayName = selectedModel ? selectedModel.name : "";
 
-  // Load messages from cookie on component mount
+  // Load messages from localStorage on component mount
   useEffect(() => {
-    const savedMessagesCookie = document.cookie
-      .split('; ')
-      .find(row => row.startsWith(`${CHAT_HISTORY_COOKIE}=`));
-
-    if (savedMessagesCookie) {
-      try {
-        const savedMessagesJson = savedMessagesCookie.split('=')[1];
-        const loadedMessages: Message[] = JSON.parse(decodeURIComponent(savedMessagesJson));
+    try {
+      const savedMessagesJson = localStorage.getItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
+      if (savedMessagesJson) {
+        const loadedMessages: Message[] = JSON.parse(savedMessagesJson);
         if (Array.isArray(loadedMessages)) {
           setMessages(
             loadedMessages.filter(msg =>
               typeof msg.id === 'string' &&
-              typeof msg.text === 'string' && // text should always be a string, even if empty for an image caption
+              typeof msg.text === 'string' &&
               (msg.sender === 'user' || msg.sender === 'bot') &&
-              !msg.isLoading // Ensure not to load messages that were in a temporary loading state
+              !msg.isLoading
             )
           );
         }
-      } catch (error) {
-        console.error("Failed to load chat history from cookie:", error);
-        // If loading fails, it's safer to clear the corrupted cookie.
-        document.cookie = `${CHAT_HISTORY_COOKIE}=; Max-Age=0; path=/; SameSite=Lax`;
-        toast({
-          variant: "destructive",
-          title: "Chat History Error",
-          description: "Could not load previous chat history. It may have been corrupted.",
-        });
       }
+    } catch (error) {
+      console.error("Failed to load chat history from localStorage:", error);
+      localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY); // Clear corrupted data
+      toast({
+        variant: "destructive",
+        title: "Chat History Error",
+        description: "Could not load previous chat history. It may have been corrupted.",
+      });
     }
-    setInitialCookieLoadAttempted(true); // Signal that initial load attempt is done
-  }, []); // Empty dependency array, runs once on mount
+    setInitialLoadAttempted(true);
+  }, [toast]); // Added toast to dependencies
 
-  // Scroll to bottom and save messages to cookie when messages change
+  // Scroll to bottom and save messages to localStorage when messages change
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }
 
-    if (!initialCookieLoadAttempted) {
-      // Don't save cookies until the initial load attempt from cookies is complete.
+    if (!initialLoadAttempted) {
       return;
     }
 
-    // Only save if there are messages and none are in a loading state.
-    // An empty messages array will not result in clearing the cookie here.
-    // The cookie is only cleared if parsing fails (in the other useEffect).
-    if (messages.length > 0 && !messages.some(msg => msg.isLoading)) {
-      try {
+    try {
+      if (messages.length > 0 && !messages.some(msg => msg.isLoading)) {
         const messagesToSave = messages.map(({ id, text, sender, avatar, imageUrl }) => ({
           id, text, sender, avatar, imageUrl
         }));
-        const messagesJson = encodeURIComponent(JSON.stringify(messagesToSave));
-        const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + 7); // 7 days expiry
-        document.cookie = `${CHAT_HISTORY_COOKIE}=${messagesJson}; expires=${expiryDate.toUTCString()}; path=/; SameSite=Lax`;
-      } catch (error) {
-        console.error("Failed to save chat history to cookie:", error);
-        toast({
-          variant: "destructive",
-          title: "Chat History Error",
-          description: "Could not save chat history.",
-        });
+        const messagesJson = JSON.stringify(messagesToSave);
+        localStorage.setItem(CHAT_HISTORY_LOCAL_STORAGE_KEY, messagesJson);
+      } else if (messages.length === 0 && initialLoadAttempted) {
+        // If messages are empty and initial load is done, clear localStorage
+        // This handles the case where the user might clear messages through a UI action (if implemented)
+        localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
       }
-    } else if (messages.length === 0 && initialCookieLoadAttempted) {
-        // If messages are empty AFTER initial load, check if a cookie *still* exists.
-        // This handles the case where the user might have cleared messages through a UI action (if implemented later)
-        // and we want the cookie to reflect that (become empty or be removed).
-        // For now, if messages are empty, it means either no cookie, an empty cookie, or a failed load (already cleared).
-        // So, if messages is empty, and a cookie with content still exists, we can clear it.
-        // But if messages are empty because the cookie was empty `[]`, we don't need to do anything.
-        const existingCookie = document.cookie.split('; ').find(row => row.startsWith(`${CHAT_HISTORY_COOKIE}=`));
-        if (existingCookie) {
-            try {
-                const currentCookieValue = decodeURIComponent(existingCookie.split('=')[1]);
-                if (currentCookieValue !== "[]") { // Only clear if it's not already an empty array
-                    document.cookie = `${CHAT_HISTORY_COOKIE}=; Max-Age=0; path=/; SameSite=Lax`;
-                }
-            } catch (e) {
-                 // If decoding fails, it's probably malformed, safer to clear
-                document.cookie = `${CHAT_HISTORY_COOKIE}=; Max-Age=0; path=/; SameSite=Lax`;
-            }
-        }
+    } catch (error) {
+      console.error("Failed to save chat history to localStorage:", error);
+      toast({
+        variant: "destructive",
+        title: "Chat History Error",
+        description: "Could not save chat history. LocalStorage might be full or unavailable.",
+      });
     }
-  }, [messages, initialCookieLoadAttempted, toast]);
+  }, [messages, initialLoadAttempted, toast]);
 
   const handleSendMessage = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -152,7 +126,7 @@ export function ChatInterface() {
     setIsLoading(true);
 
     const historyForAI: AiChatMessage[] = [...messages, userMessage]
-      .filter(msg => !msg.isLoading && (msg.text.trim() !== "" || msg.imageUrl)) // include messages that are just images
+      .filter(msg => !msg.isLoading && (msg.text.trim() !== "" || msg.imageUrl))
       .map(({ sender, text }) => ({ sender, text }));
 
     try {
@@ -305,5 +279,3 @@ export function ChatInterface() {
     </Card>
   );
 }
-
-    
