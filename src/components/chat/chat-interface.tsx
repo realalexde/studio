@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, FormEvent } from "react";
-import Image from "next/image"; 
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,7 +12,7 @@ import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, 
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Skeleton } from "@/components/ui/skeleton"; 
+import { Skeleton } from "@/components/ui/skeleton";
 import { useModel } from "@/contexts/model-context";
 
 interface Message {
@@ -21,7 +21,7 @@ interface Message {
   sender: "user" | "bot";
   avatar?: string;
   isLoading?: boolean;
-  imageUrl?: string; 
+  imageUrl?: string;
 }
 
 const CHAT_HISTORY_COOKIE = "chatHistory";
@@ -30,10 +30,11 @@ export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [initialCookieLoadAttempted, setInitialCookieLoadAttempted] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { getSelectedModel } = useModel();
-  
+
   const selectedModel = getSelectedModel();
   const modelDisplayName = selectedModel ? selectedModel.name : "";
 
@@ -48,12 +49,10 @@ export function ChatInterface() {
         const savedMessagesJson = savedMessagesCookie.split('=')[1];
         const loadedMessages: Message[] = JSON.parse(decodeURIComponent(savedMessagesJson));
         if (Array.isArray(loadedMessages)) {
-          // Filter out any isLoading messages that might have been saved incorrectly
-          // and ensure all core properties exist
           setMessages(
-            loadedMessages.filter(msg => 
+            loadedMessages.filter(msg =>
               typeof msg.id === 'string' &&
-              typeof msg.text === 'string' && 
+              typeof msg.text === 'string' &&
               (msg.sender === 'user' || msg.sender === 'bot') &&
               !msg.isLoading
             )
@@ -61,11 +60,11 @@ export function ChatInterface() {
         }
       } catch (error) {
         console.error("Failed to load chat history from cookie:", error);
-        // Clear malformed cookie
         document.cookie = `${CHAT_HISTORY_COOKIE}=; Max-Age=0; path=/; SameSite=Lax`;
       }
     }
-  }, []); // Empty dependency array means this runs once on mount
+    setInitialCookieLoadAttempted(true); // Signal that initial load attempt is done
+  }, []);
 
   // Scroll to bottom and save messages to cookie when messages change
   useEffect(() => {
@@ -73,12 +72,17 @@ export function ChatInterface() {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }
 
-    // Save messages to cookie, but only if there are messages and no message is currently loading
+    if (!initialCookieLoadAttempted) {
+      // Don't save or clear cookies until the initial load attempt from cookies is complete.
+      // This prevents an initial empty 'messages' array (before loading from cookie)
+      // from inadvertently clearing a pre-existing cookie.
+      return;
+    }
+
     if (messages.length > 0 && !messages.some(msg => msg.isLoading)) {
       try {
-        // Explicitly pick properties to save, excluding isLoading
         const messagesToSave = messages.map(({ id, text, sender, avatar, imageUrl }) => ({
-          id, text, sender, avatar, imageUrl 
+          id, text, sender, avatar, imageUrl
         }));
         const messagesJson = encodeURIComponent(JSON.stringify(messagesToSave));
         const expiryDate = new Date();
@@ -87,15 +91,14 @@ export function ChatInterface() {
       } catch (error) {
         console.error("Failed to save chat history to cookie:", error);
       }
-    } else if (messages.length === 0) {
-      // If messages are cleared (e.g. manually or if initial load had no cookie)
-      // and the cookie still exists with old data, clear it.
+    } else if (messages.length === 0 && initialCookieLoadAttempted) {
+      // Only clear the cookie if messages are empty AND we've already attempted to load from the cookie.
       const existingCookie = document.cookie.split('; ').find(row => row.startsWith(`${CHAT_HISTORY_COOKIE}=`));
       if (existingCookie) {
         document.cookie = `${CHAT_HISTORY_COOKIE}=; Max-Age=0; path=/; SameSite=Lax`;
       }
     }
-  }, [messages]);
+  }, [messages, initialCookieLoadAttempted]);
 
   const handleSendMessage = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -106,12 +109,10 @@ export function ChatInterface() {
       text: input,
       sender: "user",
     };
-    
-    // Add user message and immediately create a placeholder for bot's response
+
     setMessages((prevMessages) => [...prevMessages, userMessage]);
-    
+
     const botLoadingMessageId = (Date.now() + 1).toString();
-    // Set a temporary state for bot loading message
     setMessages((prevMessages) => [
       ...prevMessages,
       {
@@ -123,19 +124,19 @@ export function ChatInterface() {
     ]);
 
     setInput("");
-    setIsLoading(true); // Global loading state for UI elements like input disabling
+    setIsLoading(true);
 
-    const historyForAI: AiChatMessage[] = [...messages, userMessage] // Include current user message in history for AI
-      .filter(msg => !msg.isLoading && msg.text.trim() !== "") 
+    const historyForAI: AiChatMessage[] = [...messages, userMessage]
+      .filter(msg => !msg.isLoading && msg.text.trim() !== "")
       .map(({ sender, text }) => ({ sender, text }));
 
     try {
-      const flowInput: SearchAndSummarizeInput = { 
-        query: input, // userMessage.text could also be used here
-        history: historyForAI.slice(0, -1) // History for AI should not include the current query, as it's passed separately
+      const flowInput: SearchAndSummarizeInput = {
+        query: input,
+        history: historyForAI.slice(0, -1)
       };
       const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
-      
+
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
           msg.id === botLoadingMessageId
@@ -160,10 +161,10 @@ export function ChatInterface() {
         description: `Failed to get response: ${errorText}`,
       });
     } finally {
-      setIsLoading(false); // Reset global loading state
+      setIsLoading(false);
     }
   };
-  
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -177,11 +178,11 @@ export function ChatInterface() {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
            <CardTitle className="font-headline text-2xl text-foreground flex items-center gap-2">
              <Icons.Chat className="w-7 h-7 text-accent" />
-             Chat 
+             Chat
              {modelDisplayName && <span className="text-sm font-normal text-muted-foreground ml-1">({modelDisplayName})</span>}
            </CardTitle>
         </div>
-         {isLoading && ( // Use the global isLoading state for this alert
+         {isLoading && (
           <Alert className="border-accent text-sm mt-2">
             <Icons.Search className="h-5 w-5 text-accent" />
             <AlertTitle className="text-accent font-semibold">Moonlight is Thinking...</AlertTitle>
@@ -213,7 +214,7 @@ export function ChatInterface() {
                   className={`max-w-[70%] rounded-xl shadow ${
                     message.sender === "user"
                       ? "bg-primary text-primary-foreground rounded-br-none p-3"
-                      : "bg-secondary text-secondary-foreground rounded-bl-none" 
+                      : "bg-secondary text-secondary-foreground rounded-bl-none"
                   } ${message.imageUrl ? "p-2" : "p-3"}`}
                 >
                   {message.isLoading ? (
@@ -263,11 +264,11 @@ export function ChatInterface() {
             onKeyDown={handleKeyDown}
             placeholder="Ask Moonlight for information or to generate an image..."
             className="flex-1 resize-none min-h-[40px] max-h-[120px] bg-input border-border focus-visible:ring-accent"
-            disabled={isLoading} // Global isLoading disables textarea
+            disabled={isLoading}
             rows={1}
           />
           <Button type="submit" disabled={isLoading || !input.trim()} size="icon" className="bg-accent hover:bg-accent/90">
-            {isLoading ? ( // Global isLoading shows spinner on button
+            {isLoading ? (
               <Icons.Spinner className="w-5 h-5 animate-spin" />
             ) : (
               <Icons.Send className="w-5 h-5" />
