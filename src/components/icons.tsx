@@ -17,7 +17,8 @@ import {
   ImagePlus,
   PlusSquare,
   Trash2,
-  Paperclip, // Added Paperclip icon
+  Paperclip,
+  UploadCloud, // Added UploadCloud icon
   type LucideIcon,
 } from 'lucide-react';
 
@@ -41,6 +42,7 @@ export const Icons = {
   ImagePlus: ImagePlus,
   PlusSquare: PlusSquare,
   Trash2: Trash2,
-  Paperclip: Paperclip, // Export Paperclip
+  Paperclip: Paperclip,
+  UploadCloud: UploadCloud, // Export UploadCloud
 };
 

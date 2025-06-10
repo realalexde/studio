@@ -23,9 +23,10 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Input as UIDialogInput } from "@/components/ui/input"; 
+// Removed UIDialogInput as it's not directly used for the file input anymore.
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 
 interface Message {
   id: string;
@@ -58,6 +59,7 @@ export function ChatInterface() {
   const [imageToUpload, setImageToUpload] = useState<File | null>(null);
   const [uploadAccompanyingText, setUploadAccompanyingText] = useState("");
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
 
   const selectedModel = getSelectedModel();
@@ -217,6 +219,35 @@ export function ChatInterface() {
       toast({ variant: "destructive", title: "Error", description: `Failed to get response: ${errorText}` });
     } finally {
       setIsLoading(false);
+    }
+  };
+  
+  const processFileForUpload = (file: File) => {
+    if (file && file.type.startsWith("image/")) {
+      setImageToUpload(file);
+    } else {
+      toast({ variant: "destructive", title: "Invalid File", description: "Please select a valid image file." });
+      setImageToUpload(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setIsDragging(false);
+    if (event.dataTransfer.files && event.dataTransfer.files.length > 0) {
+      processFileForUpload(event.dataTransfer.files[0]);
+      event.dataTransfer.clearData();
     }
   };
 
@@ -397,9 +428,12 @@ export function ChatInterface() {
                                   console.error("Failed to load image:", (e.target as HTMLImageElement).src);
                                   const skeletonElement = (e.target as HTMLImageElement).parentElement?.parentElement as HTMLElement | null;
                                   if (skeletonElement) {
-                                      skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50', '!bg-transparent');
+                                      skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50');
+                                      skeletonElement.style.display = 'flex';
+                                      skeletonElement.style.alignItems = 'center';
+                                      skeletonElement.style.justifyContent = 'center';
                                       skeletonElement.classList.add('bg-destructive/10');
-                                      skeletonElement.innerHTML = '<p class="text-xs text-destructive p-2 text-center flex items-center justify-center h-full">Error loading image</p>';
+                                      skeletonElement.innerHTML = '<p class="text-xs text-destructive p-2 text-center">Error loading image</p>';
                                   }
                                   if (!message.imageError) { 
                                     toast({ variant: "destructive", title: "Image Load Error", description: "The image could not be displayed."});
@@ -469,55 +503,74 @@ export function ChatInterface() {
       </Card>
 
       <Dialog open={isUploadImageDialogOpen} onOpenChange={setIsUploadImageDialogOpen}>
-        <DialogContent className="sm:max-w-lg bg-card border-border">
+        <DialogContent 
+            className="sm:max-w-lg bg-card border-border"
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+        >
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-foreground">
               <Icons.Paperclip className="w-6 h-6 text-accent"/>
               Upload Image to Chat
             </DialogTitle>
             <DialogDescription>
-              Select an image file and add an optional message to send to Moonlight.
+              Select an image file by clicking below, or drag and drop an image onto this dialog.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="image-upload-input-dialog" className="text-right text-muted-foreground">
-                Image
+            <div className="grid grid-cols-1 items-center gap-4">
+              <Label htmlFor="image-upload-input-dialog" className="sr-only">
+                Image Upload
               </Label>
-              <UIDialogInput
+              <input
                 id="image-upload-input-dialog"
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                onChange={(e) => setImageToUpload(e.target.files ? e.target.files[0] : null)}
-                className="col-span-3 bg-input border-input file:text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-accent file:text-accent-foreground hover:file:bg-accent/90"
+                onChange={(e) => e.target.files && e.target.files.length > 0 && processFileForUpload(e.target.files[0])}
+                className="sr-only" 
                 disabled={isProcessingUpload}
               />
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className={cn(
+                  "flex flex-col items-center justify-center w-full p-6 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors",
+                  isDragging ? "border-accent bg-accent/10" : "border-input",
+                  imageToUpload ? "border-primary" : ""
+                )}
+                
+              >
+                <Icons.UploadCloud className={cn("w-10 h-10 mb-3", isDragging ? "text-accent" : "text-muted-foreground")} />
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-semibold text-accent">Click to browse</span> or drag & drop
+                </p>
+                <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB</p>
+              </div>
             </div>
+
             {imageToUpload && (
-             <div className="grid grid-cols-4 items-center gap-4 mt-1">
-               <div className="col-start-2 col-span-3">
-                 <p className="text-xs text-muted-foreground truncate">
-                   Selected: {imageToUpload.name}
-                 </p>
-               </div>
+             <div className="mt-2">
+               <p className="text-sm text-muted-foreground truncate">
+                 Selected: <span className="font-medium text-foreground">{imageToUpload.name}</span>
+               </p>
              </div>
            )}
             {imageToUpload && (
-              <div className="col-span-4 flex justify-center mt-2">
-                <Image src={URL.createObjectURL(imageToUpload)} alt="Preview" width={100} height={100} className="rounded-md border max-h-32 object-contain"/>
+              <div className="col-span-4 flex justify-center mt-2 border rounded-md p-2 bg-muted/20">
+                <Image src={URL.createObjectURL(imageToUpload)} alt="Preview" width={100} height={100} className="rounded-md max-h-32 object-contain"/>
               </div>
             )}
-            <div className="grid grid-cols-4 items-start gap-4">
-              <Label htmlFor="upload-accompanying-text" className="text-right text-muted-foreground pt-2">
-                Message
+            <div className="grid grid-cols-1 items-start gap-2 mt-2">
+              <Label htmlFor="upload-accompanying-text" className="text-muted-foreground">
+                Optional Message
               </Label>
               <Textarea
                 id="upload-accompanying-text"
                 value={uploadAccompanyingText}
                 onChange={(e) => setUploadAccompanyingText(e.target.value)}
-                placeholder="Optional: Add a message about the image..."
-                className="col-span-3 bg-input border-input min-h-[60px]"
+                placeholder="Add a message about the image..."
+                className="bg-input border-input min-h-[60px]"
                 rows={2}
                 disabled={isProcessingUpload}
               />
