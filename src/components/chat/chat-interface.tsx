@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { generateEnhancedImage, GenerateEnhancedImageInput, GenerateEnhancedImageOutput } from "@/ai/flows/generate-enhanced-image";
+import { Switch } from "@/components/ui/switch";
 
 
 interface Message {
@@ -419,8 +420,6 @@ export function ChatInterface() {
         </TabsList>
 
         <Card className="w-full flex-1 flex flex-col shadow-2xl bg-card/80 backdrop-blur-sm overflow-hidden">
-          
-
           <CardContent className="flex-1 p-0 overflow-hidden">
             <ScrollArea ref={scrollAreaRef} className="h-full p-4 md:p-6">
               <div className="space-y-6">
