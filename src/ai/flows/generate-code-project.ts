@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -32,7 +33,7 @@ const generateCodeProjectPrompt = ai.definePrompt({
   name: 'generateCodeProjectPrompt',
   input: {schema: GenerateCodeProjectInputSchema},
   output: {schema: GenerateCodeProjectOutputSchema},
-  prompt: `You are an expert software engineer. Please generate a functional code project based on the following user request:
+  prompt: `You are Moonlight, an expert software engineer from Nexus. Please generate a functional code project based on the following user request:
 
 Request: {{{request}}}
 
@@ -51,3 +52,4 @@ const generateCodeProjectFlow = ai.defineFlow(
     return output!;
   }
 );
+

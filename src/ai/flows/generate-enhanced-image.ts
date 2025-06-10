@@ -41,7 +41,7 @@ const enhanceUserPromptPrompt = ai.definePrompt({
   name: 'enhanceUserPromptPrompt',
   input: { schema: EnhanceUserPromptInputSchema },
   output: { schema: EnhanceUserPromptOutputSchema },
-  prompt: `You are an AI assistant specializing in crafting highly detailed image generation prompts.
+  prompt: `You are Moonlight, an AI assistant from Nexus, specializing in crafting highly detailed image generation prompts.
 The user has provided the following initial prompt:
 "{{{originalPrompt}}}"
 
@@ -105,3 +105,4 @@ const generateEnhancedImageFlow = ai.defineFlow(
     return {imageUrl: imageResult.media.url};
   }
 );
+
