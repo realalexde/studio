@@ -26,6 +26,8 @@ import {
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
+import { generateEnhancedImage, GenerateEnhancedImageInput, GenerateEnhancedImageOutput } from "@/ai/flows/generate-enhanced-image";
+
 
 interface Message {
   id: string;
@@ -59,6 +61,11 @@ export function ChatInterface() {
   const [uploadAccompanyingText, setUploadAccompanyingText] = useState("");
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+
+  const [isGenerateImageDialogOpen, setIsGenerateImageDialogOpen] = useState(false);
+  const [generateImagePrompt, setGenerateImagePrompt] = useState("");
+  const [enhanceGeneratedImagePrompt, setEnhanceGeneratedImagePrompt] = useState(false);
+  const [isProcessingGeneration, setIsProcessingGeneration] = useState(false);
 
 
   const selectedModel = getSelectedModel();
@@ -178,7 +185,7 @@ export function ChatInterface() {
     if (activeDialogId === dialogIdToDelete) {
       const remainingDialogIds = Object.keys(updatedDialogs);
       setActiveDialogId(remainingDialogIds[0] || null);
-      if(remainingDialogIds.length === 0) { handleAddDialog(); } // Should not happen due to guard above
+      if(remainingDialogIds.length === 0) { handleAddDialog(); } 
     }
   };
 
@@ -320,6 +327,51 @@ export function ChatInterface() {
     };
   };
 
+  const handleGenerateImageInChat = async () => {
+    if (!generateImagePrompt.trim() || !activeDialogId) {
+      toast({ variant: "destructive", title: "Empty Prompt", description: "Please enter a prompt for the image."});
+      return;
+    }
+    setIsProcessingGeneration(true);
+    setIsGenerateImageDialogOpen(false);
+
+    const botLoadingMessageId = (Date.now() + 1).toString();
+    setDialogs(prev => ({ ...prev, [activeDialogId]: [ ...(prev[activeDialogId] || []), { id: botLoadingMessageId, text: `Generating image: "${generateImagePrompt}"...`, sender: "bot", isLoading: true }] }));
+    
+    setIsLoading(true);
+
+    try {
+      const flowInput: GenerateEnhancedImageInput = { 
+        prompt: generateImagePrompt,
+        enhance: enhanceGeneratedImagePrompt
+      };
+      const result: GenerateEnhancedImageOutput = await generateEnhancedImage(flowInput);
+      
+      setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
+        msg.id === botLoadingMessageId ? { 
+          ...msg, 
+          text: `Generated image for prompt: "${generateImagePrompt}" ${enhanceGeneratedImagePrompt ? '(enhanced)' : ''}`, 
+          imageUrl: result.imageUrl, 
+          isLoading: false, 
+          imageError: false 
+        } : msg
+      )}));
+      toast({ title: "Image Generated in Chat", description: "The AI has generated the image."});
+    } catch (error) {
+      console.error("AI Image Generation Error in Chat:", error);
+      const errorText = error instanceof Error ? error.message : "An unknown error occurred.";
+      setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
+          msg.id === botLoadingMessageId ? { ...msg, text: `Error generating image: ${errorText}`, isLoading: false, imageError: true } : msg
+      )}));
+      toast({ variant: "destructive", title: "Image Generation Error", description: errorText });
+    } finally {
+      setIsLoading(false);
+      setIsProcessingGeneration(false);
+      setGenerateImagePrompt("");
+      setEnhanceGeneratedImagePrompt(false);
+    }
+  };
+
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -367,17 +419,7 @@ export function ChatInterface() {
         </TabsList>
 
         <Card className="w-full flex-1 flex flex-col shadow-2xl bg-card/80 backdrop-blur-sm overflow-hidden">
-          <CardHeader className="border-b border-border shrink-0">
-            {(isLoading || isProcessingUpload) && (
-              <Alert className="border-accent text-sm">
-                <Icons.Search className="h-5 w-5 text-accent" />
-                <AlertTitle className="text-accent font-semibold">Moonlight is Thinking...</AlertTitle>
-                <AlertDescription className="text-muted-foreground">
-                  The AI may be processing your text or image. This might take a moment.
-                </AlertDescription>
-              </Alert>
-            )}
-          </CardHeader>
+          
 
           <CardContent className="flex-1 p-0 overflow-hidden">
             <ScrollArea ref={scrollAreaRef} className="h-full p-4 md:p-6">
@@ -431,14 +473,14 @@ export function ChatInterface() {
                                     const skeletonContainer = (e.target as HTMLImageElement).parentElement;
                                     if (skeletonContainer) {
                                         const skeletonElement = skeletonContainer.querySelector('.absolute.inset-0.w-full.h-full.rounded-md.bg-muted\\/50.z-0') as HTMLElement | null;
-                                        if (skeletonElement) { // If skeleton is still there
+                                        if (skeletonElement && skeletonElement.style.display !== 'none') { 
                                             skeletonElement.style.display = 'flex';
                                             skeletonElement.style.alignItems = 'center';
                                             skeletonElement.style.justifyContent = 'center';
                                             skeletonElement.classList.remove('bg-muted/50');
                                             skeletonElement.classList.add('bg-destructive/10');
                                             skeletonElement.innerHTML = '<p class="text-xs text-destructive p-2 text-center">Error loading image</p>';
-                                        } else { // If skeleton was already hidden, style the container itself
+                                        } else if (!skeletonElement) { 
                                             skeletonContainer.classList.add('bg-destructive/10', 'flex', 'items-center', 'justify-center');
                                             skeletonContainer.innerHTML = '<p class="text-xs text-destructive p-2 text-center">Error loading image</p>';
                                         }
@@ -483,11 +525,22 @@ export function ChatInterface() {
                 variant="outline"
                 size="icon"
                 onClick={() => setIsUploadImageDialogOpen(true)}
-                disabled={isLoading || isProcessingUpload}
+                disabled={isLoading || isProcessingUpload || isProcessingGeneration}
                 className="border-input hover:bg-accent/10"
                 aria-label="Upload Image"
               >
                 <Icons.Paperclip className="w-5 h-5 text-accent" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setIsGenerateImageDialogOpen(true)}
+                disabled={isLoading || isProcessingUpload || isProcessingGeneration}
+                className="border-input hover:bg-accent/10"
+                aria-label="Generate Image with AI"
+              >
+                <Icons.ImagePlus className="w-5 h-5 text-accent" />
               </Button>
               <Textarea
                 value={currentInputText}
@@ -495,11 +548,11 @@ export function ChatInterface() {
                 onKeyDown={handleKeyDown}
                 placeholder="Ask Moonlight for information..."
                 className="flex-1 resize-none min-h-[40px] max-h-[120px] bg-input border-border focus-visible:ring-accent"
-                disabled={isLoading || isProcessingUpload}
+                disabled={isLoading || isProcessingUpload || isProcessingGeneration}
                 rows={1}
               />
-              <Button type="submit" disabled={isLoading || isProcessingUpload || !currentInputText.trim()} size="icon" className="bg-accent hover:bg-accent/90">
-                {(isLoading || isProcessingUpload) ? (
+              <Button type="submit" disabled={isLoading || isProcessingUpload || isProcessingGeneration || !currentInputText.trim()} size="icon" className="bg-accent hover:bg-accent/90">
+                {(isLoading || isProcessingUpload || isProcessingGeneration) ? (
                   <Icons.Spinner className="w-5 h-5 animate-spin" />
                 ) : (
                   <Icons.Send className="w-5 h-5" />
@@ -511,6 +564,7 @@ export function ChatInterface() {
         </Card>
       </Tabs>
 
+      {/* Dialog for Uploading Image */}
       <Dialog open={isUploadImageDialogOpen} onOpenChange={setIsUploadImageDialogOpen}>
         <DialogContent 
             className="sm:max-w-lg bg-card border-border"
@@ -601,6 +655,64 @@ export function ChatInterface() {
                 <Icons.Send className="mr-2 h-4 w-4" />
               )}
               Send with Image
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog for Generating Image in Chat */}
+      <Dialog open={isGenerateImageDialogOpen} onOpenChange={setIsGenerateImageDialogOpen}>
+        <DialogContent className="sm:max-w-lg bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground">
+              <Icons.ImagePlus className="w-6 h-6 text-accent"/>
+              Generate Image with AI
+            </DialogTitle>
+            <DialogDescription>
+              Type a prompt for the image you want the AI to generate. Optionally, enhance the prompt for more detail.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-1 items-center gap-2">
+              <Label htmlFor="generate-image-prompt-dialog" className="text-muted-foreground">
+                Image Prompt
+              </Label>
+              <Textarea
+                id="generate-image-prompt-dialog"
+                value={generateImagePrompt}
+                onChange={(e) => setGenerateImagePrompt(e.target.value)}
+                placeholder="e.g., A futuristic cityscape at sunset"
+                className="bg-input border-input min-h-[80px]"
+                rows={3}
+                disabled={isProcessingGeneration}
+              />
+            </div>
+            <div className="flex items-center space-x-2 mt-2">
+              <Switch
+                id="enhance-generated-image-prompt-toggle"
+                checked={enhanceGeneratedImagePrompt}
+                onCheckedChange={setEnhanceGeneratedImagePrompt}
+                disabled={isProcessingGeneration}
+              />
+              <Label htmlFor="enhance-generated-image-prompt-toggle">Enhance Prompt for Detailed Image</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" disabled={isProcessingGeneration} onClick={() => {setGenerateImagePrompt(""); setEnhanceGeneratedImagePrompt(false);}}>Cancel</Button>
+            </DialogClose>
+            <Button
+              type="button"
+              onClick={handleGenerateImageInChat}
+              disabled={!generateImagePrompt.trim() || isProcessingGeneration}
+              className="bg-accent hover:bg-accent/90"
+            >
+              {isProcessingGeneration ? (
+                <Icons.Spinner className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Icons.Brain className="mr-2 h-4 w-4" />
+              )}
+              Generate Image
             </Button>
           </DialogFooter>
         </DialogContent>
