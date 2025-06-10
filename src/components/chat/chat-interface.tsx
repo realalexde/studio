@@ -24,9 +24,9 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Switch } from "@/components/ui/switch"; // Keep this import
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { Input } from "@/components/ui/input"; // For renaming input, though a raw input might be used
+import { Input } from "@/components/ui/input"; 
 
 interface Message {
   id: string;
@@ -43,8 +43,8 @@ interface DialogData {
   name: string;
 }
 
-const CHAT_DATA_STORAGE_KEY = "noxGptChatData_v2"; // New key for combined data
-const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "noxGptChatActiveDialogId_v1"; // Can remain the same
+const CHAT_DATA_STORAGE_KEY = "noxGptChatData_v2"; 
+const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "noxGptChatActiveDialogId_v1"; 
 const DEFAULT_DIALOG_ID = "chat-1";
 
 export function ChatInterface() {
@@ -215,7 +215,7 @@ export function ChatInterface() {
       setDialogsData(prev => ({
         ...prev,
         [editingDialogId]: {
-          ...(prev[editingDialogId] || { messages: [], name: '' }), // Ensure dialog exists
+          ...(prev[editingDialogId] || { messages: [], name: '' }), 
           name: currentRenameValue.trim(),
         }
       }));
@@ -444,7 +444,7 @@ export function ChatInterface() {
 
   return (
     <>
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+      <div className="flex flex-col items-start sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
         <div className="font-headline text-2xl text-foreground flex items-center gap-2 shrink-0">
           <Icons.Chat className="w-7 h-7 text-accent" />
           Chat
@@ -728,3 +728,5 @@ export function ChatInterface() {
     </>
   );
 }
+
+    

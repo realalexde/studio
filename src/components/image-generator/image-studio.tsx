@@ -17,7 +17,7 @@ export function ImageStudio() {
   const [prompt, setPrompt] = useState("");
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [enhancePrompt, setEnhancePrompt] = useState(false); // Updated state name
+  const [enhancePrompt, setEnhancePrompt] = useState(false); 
   const { toast } = useToast();
 
   const handleSubmit = async (e: FormEvent) => {
@@ -37,7 +37,7 @@ export function ImageStudio() {
     try {
       const input: GenerateEnhancedImageInput = { 
         prompt,
-        enhance: enhancePrompt // Pass the enhance option
+        enhance: enhancePrompt 
       };
       const result: GenerateEnhancedImageOutput = await generateEnhancedImage(input);
       setGeneratedImageUrl(result.imageUrl);
@@ -63,8 +63,6 @@ export function ImageStudio() {
     const link = document.createElement('a');
     link.href = generatedImageUrl;
     
-    // Create a filename from the prompt, or a default one
-    // Sanitize the prompt to create a valid filename
     const safePrompt = prompt.trim() ? prompt.trim().replace(/[^a-z0-9_.-]/gi, '_').slice(0, 50) : 'ai-image';
     const filename = `${safePrompt}.png`;
 
@@ -161,3 +159,5 @@ export function ImageStudio() {
     </Card>
   );
 }
+
+    
