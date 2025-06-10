@@ -38,7 +38,7 @@ export function SidebarNav() {
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-2">
           <Icons.Logo className="w-8 h-8 text-accent" />
-          <h1 className="text-xl font-semibold text-foreground font-headline">Nox AI</h1>
+          <h1 className="text-xl font-semibold text-foreground font-headline">NoxGPT</h1>
         </div>
       </SidebarHeader>
       <Separator className="my-2" />

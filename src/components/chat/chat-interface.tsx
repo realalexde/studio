@@ -39,8 +39,8 @@ interface Message {
   imageError?: boolean;
 }
 
-const CHAT_DIALOGS_STORAGE_KEY = "noxAiChatDialogs_v1";
-const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "noxAiChatActiveDialogId_v1";
+const CHAT_DIALOGS_STORAGE_KEY = "noxGptChatDialogs_v1";
+const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "noxGptChatActiveDialogId_v1";
 const DEFAULT_DIALOG_ID = "chat-1";
 
 export function ChatInterface() {
@@ -397,12 +397,11 @@ export function ChatInterface() {
                                 }}
                                 onError={(e) => {
                                   console.error("Failed to load image:", (e.target as HTMLImageElement).src);
-                                  const imageContainer = (e.target as HTMLImageElement).parentElement as HTMLElement | null;
-                                  if (imageContainer) {
-                                    const skeleton = imageContainer.querySelector('.absolute.inset-0.w-full.h-full.rounded-md.bg-muted\\/50.z-0') as HTMLElement | null;
-                                    if(skeleton) skeleton.style.display = 'none'; // Hide skeleton
-                                    imageContainer.innerHTML = '<p class="text-xs text-destructive p-2 text-center flex items-center justify-center h-full">Error loading image</p>';
-                                    imageContainer.classList.add('bg-destructive/10');
+                                  const skeletonElement = (e.target as HTMLImageElement).parentElement?.parentElement as HTMLElement | null;
+                                  if (skeletonElement) {
+                                      skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50', '!bg-transparent');
+                                      skeletonElement.classList.add('bg-destructive/10');
+                                      skeletonElement.innerHTML = '<p class="text-xs text-destructive p-2 text-center flex items-center justify-center h-full">Error loading image</p>';
                                   }
                                   if (!message.imageError) { // Prevent multiple toasts for same error
                                     toast({ variant: "destructive", title: "Image Load Error", description: "The image could not be displayed."});
@@ -540,4 +539,3 @@ export function ChatInterface() {
     </>
   );
 }
-

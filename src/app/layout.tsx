@@ -1,10 +1,11 @@
+
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'Nox AI',
-  description: 'Your intelligent assistant for chat, code, and image generation, powered by Nox AI.',
+  title: 'NoxGPT',
+  description: 'Your intelligent assistant for chat, code, and image generation, powered by NoxGPT.',
 };
 
 export default function RootLayout({
