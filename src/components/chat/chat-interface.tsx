@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton
+import { useModel } from "@/contexts/model-context";
 
 interface Message {
   id: string;
@@ -29,6 +30,11 @@ export function ChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const { getSelectedModel } = useModel();
+  
+  const selectedModel = getSelectedModel();
+  const modelDisplayName = selectedModel ? selectedModel.name : "";
+
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -111,7 +117,10 @@ export function ChatInterface() {
     <Card className="w-full h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)] flex flex-col shadow-2xl bg-card/80 backdrop-blur-sm">
       <CardHeader className="border-b border-border">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-           <CardTitle className="font-headline text-2xl text-foreground">Chat</CardTitle>
+           <CardTitle className="font-headline text-2xl text-foreground">
+             Chat 
+             {modelDisplayName && <span className="text-sm font-normal text-muted-foreground ml-2">({modelDisplayName})</span>}
+           </CardTitle>
         </div>
          {isLoading && (
           <Alert className="border-accent text-sm mt-2">
@@ -211,4 +220,3 @@ export function ChatInterface() {
     </Card>
   );
 }
-

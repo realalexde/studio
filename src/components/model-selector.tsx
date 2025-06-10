@@ -10,39 +10,30 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Icons } from "./icons";
+import { useModel } from "@/contexts/model-context";
 
 interface ModelSelectorProps {
-  currentModel: string;
-  onModelChange: (modelId: string) => void;
   disabled?: boolean;
 }
 
-// Define available models with Moonlight branding
-const availableModels = [
-  { id: "moonlight-go", name: "moonlight go", icon: Icons.Brain },
-  { id: "moonlight-lite", name: "moonlight lite", icon: Icons.Brain },
-  { id: "moonlight", name: "moonlight", icon: Icons.Brain },
-  { id: "moonlight-flash", name: "moonlight flash", icon: Icons.Brain },
-  { id: "moonlight-pro", name: "moonlight pro", icon: Icons.Brain },
-];
+export function ModelSelector({ disabled }: ModelSelectorProps) {
+  const { currentModelId, setCurrentModelId, models } = useModel();
 
-export function ModelSelector({ currentModel, onModelChange, disabled }: ModelSelectorProps) {
   return (
     <div className="flex flex-col space-y-1.5">
       <Label htmlFor="model-select" className="text-sm font-medium text-muted-foreground">
         AI Model
       </Label>
       <Select
-        value={currentModel}
-        onValueChange={onModelChange}
+        value={currentModelId}
+        onValueChange={setCurrentModelId}
         disabled={disabled}
       >
         <SelectTrigger id="model-select" className="w-full md:w-[200px] bg-input border-border">
           <SelectValue placeholder="Select model" />
         </SelectTrigger>
         <SelectContent>
-          {availableModels.map((model) => (
+          {models.map((model) => (
             <SelectItem key={model.id} value={model.id}>
               <div className="flex items-center gap-2">
                 <model.icon className="h-4 w-4 text-muted-foreground" />

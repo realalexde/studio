@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { ModelSelector } from "./model-selector";
 import React from "react";
+import { useModel } from "@/contexts/model-context";
 
 const navItems = [
   { href: "/chat", label: "Chat", icon: Icons.Chat },
@@ -24,14 +25,11 @@ const navItems = [
 
 export function SidebarNav() {
   const pathname = usePathname();
-  const [currentModel, setCurrentModel] = React.useState("moonlight"); // Default to moonlight
+  const { setCurrentModelId } = useModel(); // currentModelId is managed by ModelSelector via context
 
-  const handleModelChange = (modelId: string) => {
-    setCurrentModel(modelId);
-    console.log("Model changed to:", modelId);
-    // Note: This UI change doesn't alter the actual Genkit model used for generation yet.
-    // The Genkit instance in src/ai/genkit.ts is still configured with a single model.
-  };
+  // The ModelSelector now directly uses and updates context.
+  // The handleModelChange function is no longer needed here for simple context update.
+  // If more complex logic were needed on model change within SidebarNav, it could be reinstated.
 
 
   return (
@@ -62,7 +60,7 @@ export function SidebarNav() {
       </SidebarMenu>
       <Separator className="my-2" />
       <SidebarFooter className="p-4 space-y-4">
-         <ModelSelector currentModel={currentModel} onModelChange={handleModelChange} />
+         <ModelSelector />
         <Button variant="outline" size="sm" className="w-full">
           <Icons.Settings className="mr-2 h-4 w-4" />
           Settings
