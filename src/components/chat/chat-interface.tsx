@@ -24,8 +24,9 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch"; // Keep this import
 import { cn } from "@/lib/utils";
-
+import { Input } from "@/components/ui/input"; // For renaming input, though a raw input might be used
 
 interface Message {
   id: string;
@@ -37,12 +38,17 @@ interface Message {
   imageError?: boolean;
 }
 
-const CHAT_DIALOGS_STORAGE_KEY = "noxGptChatDialogs_v1";
-const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "noxGptChatActiveDialogId_v1";
+interface DialogData {
+  messages: Message[];
+  name: string;
+}
+
+const CHAT_DATA_STORAGE_KEY = "noxGptChatData_v2"; // New key for combined data
+const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "noxGptChatActiveDialogId_v1"; // Can remain the same
 const DEFAULT_DIALOG_ID = "chat-1";
 
 export function ChatInterface() {
-  const [dialogs, setDialogs] = useState<Record<string, Message[]>>({});
+  const [dialogsData, setDialogsData] = useState<Record<string, DialogData>>({});
   const [activeDialogId, setActiveDialogId] = useState<string | null>(null);
   
   const [currentInputText, setCurrentInputText] = useState("");
@@ -60,88 +66,102 @@ export function ChatInterface() {
   const [isProcessingUpload, setIsProcessingUpload] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
+  const [editingDialogId, setEditingDialogId] = useState<string | null>(null);
+  const [currentRenameValue, setCurrentRenameValue] = useState<string>("");
+
   const selectedModel = getSelectedModel();
   const modelDisplayName = selectedModel ? selectedModel.name : "";
 
   useEffect(() => {
     try {
-      const savedDialogsJson = localStorage.getItem(CHAT_DIALOGS_STORAGE_KEY);
+      const savedDataJson = localStorage.getItem(CHAT_DATA_STORAGE_KEY);
       const savedActiveDialogId = localStorage.getItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY);
 
-      let loadedDialogs: Record<string, Message[]> = {};
-      if (savedDialogsJson) {
-        const parsedDialogs = JSON.parse(savedDialogsJson);
-        Object.keys(parsedDialogs).forEach(id => {
-          if (Array.isArray(parsedDialogs[id])) {
-            loadedDialogs[id] = parsedDialogs[id].map((msg: any) => ({
-              ...msg,
-              isLoading: false,
-              imageError: msg.imageError || false, 
-              imageUrl: msg.imageError ? undefined : msg.imageUrl,
-            })).filter(Boolean);
+      let loadedData: Record<string, DialogData> = {};
+      if (savedDataJson) {
+        const parsedData = JSON.parse(savedDataJson);
+        Object.keys(parsedData).forEach(id => {
+          if (parsedData[id] && Array.isArray(parsedData[id].messages) && typeof parsedData[id].name === 'string') {
+            loadedData[id] = {
+              name: parsedData[id].name,
+              messages: parsedData[id].messages.map((msg: any) => ({
+                ...msg,
+                isLoading: false,
+                imageError: msg.imageError || false, 
+                imageUrl: msg.imageError ? undefined : msg.imageUrl,
+              })).filter(Boolean),
+            };
           }
         });
       }
 
       let currentActiveId = savedActiveDialogId;
+      const defaultName = DEFAULT_DIALOG_ID.replace(/-/g, ' ');
+      const capitalizedDefaultName = defaultName.charAt(0).toUpperCase() + defaultName.slice(1);
 
-      if (Object.keys(loadedDialogs).length === 0) {
-        loadedDialogs = { [DEFAULT_DIALOG_ID]: [] };
+
+      if (Object.keys(loadedData).length === 0) {
+        loadedData = { [DEFAULT_DIALOG_ID]: { messages: [], name: capitalizedDefaultName } };
         currentActiveId = DEFAULT_DIALOG_ID;
-      } else if (!currentActiveId || !loadedDialogs[currentActiveId]) {
-        currentActiveId = Object.keys(loadedDialogs)[0];
+      } else if (!currentActiveId || !loadedData[currentActiveId]) {
+        currentActiveId = Object.keys(loadedData)[0];
       }
       
-      setDialogs(loadedDialogs);
+      setDialogsData(loadedData);
       setActiveDialogId(currentActiveId);
 
     } catch (error) {
-      console.error("Failed to load chat history from localStorage:", error);
+      console.error("Failed to load chat data from localStorage:", error);
       toast({
         variant: "destructive",
         title: "Chat History Error",
-        description: "Could not load previous chat history. Starting fresh.",
+        description: "Could not load previous chat data. Starting fresh.",
       });
-      setDialogs({ [DEFAULT_DIALOG_ID]: [] });
+      const defaultName = DEFAULT_DIALOG_ID.replace(/-/g, ' ');
+      const capitalizedDefaultName = defaultName.charAt(0).toUpperCase() + defaultName.slice(1);
+      setDialogsData({ [DEFAULT_DIALOG_ID]: { messages: [], name: capitalizedDefaultName } });
       setActiveDialogId(DEFAULT_DIALOG_ID);
-      localStorage.removeItem(CHAT_DIALOGS_STORAGE_KEY);
+      localStorage.removeItem(CHAT_DATA_STORAGE_KEY);
       localStorage.removeItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY);
     }
     setInitialLoadComplete(true);
   }, [toast]);
 
   useEffect(() => {
-    if (!initialLoadComplete || !activeDialogId) return; 
+    if (!initialLoadComplete) return; 
 
     try {
-      const dialogsToSave: Record<string, Message[]> = {};
-      Object.entries(dialogs).forEach(([id, msgs]) => {
-        dialogsToSave[id] = msgs.map(({ isLoading: _isLoading, ...rest }) => {
-           return rest.imageError ? { ...rest, imageUrl: undefined } : rest;
-        });
+      const dataToSave: Record<string, DialogData> = {};
+      Object.entries(dialogsData).forEach(([id, data]) => {
+        dataToSave[id] = {
+          name: data.name,
+          messages: data.messages.map(({ isLoading: _isLoading, ...rest }) => {
+             return rest.imageError ? { ...rest, imageUrl: undefined } : rest;
+          }),
+        };
       });
 
-      localStorage.setItem(CHAT_DIALOGS_STORAGE_KEY, JSON.stringify(dialogsToSave));
+      localStorage.setItem(CHAT_DATA_STORAGE_KEY, JSON.stringify(dataToSave));
       if (activeDialogId) {
         localStorage.setItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY, activeDialogId);
       } else {
         localStorage.removeItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY);
       }
     } catch (error) {
-      console.error("Failed to save chat history to localStorage:", error);
+      console.error("Failed to save chat data to localStorage:", error);
     }
-  }, [dialogs, activeDialogId, initialLoadComplete]);
+  }, [dialogsData, activeDialogId, initialLoadComplete]);
   
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }
-  }, [dialogs, activeDialogId]);
+  }, [dialogsData, activeDialogId]);
 
-  const currentMessages = activeDialogId ? dialogs[activeDialogId] || [] : [];
+  const currentMessages = activeDialogId ? dialogsData[activeDialogId]?.messages || [] : [];
 
   const handleAddDialog = () => {
-    const existingDialogNumbers = Object.keys(dialogs)
+    const existingDialogNumbers = Object.keys(dialogsData)
       .map(id => {
         const match = id.match(/^chat-(\d+)$/);
         return match ? parseInt(match[1], 10) : null;
@@ -152,53 +172,88 @@ export function ChatInterface() {
     if (existingDialogNumbers.length > 0) {
       existingDialogNumbers.sort((a, b) => a - b);
       for (const num of existingDialogNumbers) {
-        if (newDialogNumber < num) {
-          break; 
-        }
-        if (newDialogNumber === num) {
-          newDialogNumber++; 
-        }
+        if (newDialogNumber < num) break; 
+        if (newDialogNumber === num) newDialogNumber++; 
       }
     }
     const newDialogId = `chat-${newDialogNumber}`;
-    setDialogs(prevDialogs => ({ ...prevDialogs, [newDialogId]: [] }));
+    const newDialogName = `Chat ${newDialogNumber}`;
+
+    setDialogsData(prevData => ({
+      ...prevData,
+      [newDialogId]: { messages: [], name: newDialogName }
+    }));
     setActiveDialogId(newDialogId);
     setCurrentInputText("");
   };
 
   const handleDeleteDialog = (dialogIdToDelete: string) => {
-    if (Object.keys(dialogs).length <= 1) {
+    if (Object.keys(dialogsData).length <= 1) {
       toast({ variant: "destructive", title: "Cannot Delete", description: "You must have at least one chat open." });
       return;
     }
-    const updatedDialogs = { ...dialogs };
-    delete updatedDialogs[dialogIdToDelete];
-    setDialogs(updatedDialogs);
+    const updatedData = { ...dialogsData };
+    delete updatedData[dialogIdToDelete];
+    setDialogsData(updatedData);
+
     if (activeDialogId === dialogIdToDelete) {
-      const remainingDialogIds = Object.keys(updatedDialogs);
-      setActiveDialogId(remainingDialogIds[0] || null);
-      if(remainingDialogIds.length === 0) { handleAddDialog(); } 
+      const remainingDialogIds = Object.keys(updatedData);
+      if (remainingDialogIds.length > 0) {
+        setActiveDialogId(remainingDialogIds[0]);
+      } else {
+        // If all are deleted, create a new default one.
+        const defaultName = DEFAULT_DIALOG_ID.replace(/-/g, ' ');
+        const capitalizedDefaultName = defaultName.charAt(0).toUpperCase() + defaultName.slice(1);
+        setDialogsData({ [DEFAULT_DIALOG_ID]: { messages: [], name: capitalizedDefaultName } });
+        setActiveDialogId(DEFAULT_DIALOG_ID);
+      }
     }
+  };
+
+  const handleRenameSubmit = () => {
+    if (editingDialogId && currentRenameValue.trim() !== "") {
+      setDialogsData(prev => ({
+        ...prev,
+        [editingDialogId]: {
+          ...(prev[editingDialogId] || { messages: [], name: '' }), // Ensure dialog exists
+          name: currentRenameValue.trim(),
+        }
+      }));
+    }
+    setEditingDialogId(null);
   };
 
   const handleSendMessage = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!currentInputText.trim() || !activeDialogId) return;
+    if (!currentInputText.trim() || !activeDialogId || !dialogsData[activeDialogId]) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       text: currentInputText,
       sender: "user",
     };
-    setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), userMessage] }));
+    
+    setDialogsData(prev => ({
+      ...prev,
+      [activeDialogId]: {
+        ...prev[activeDialogId],
+        messages: [...(prev[activeDialogId]?.messages || []), userMessage],
+      }
+    }));
     
     const botLoadingMessageId = (Date.now() + 1).toString();
-    setDialogs(prev => ({ ...prev, [activeDialogId]: [ ...(prev[activeDialogId] || []), { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }] }));
+    setDialogsData(prev => ({
+      ...prev,
+      [activeDialogId]: {
+        ...prev[activeDialogId],
+        messages: [...(prev[activeDialogId]?.messages || []), { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }],
+      }
+    }));
 
     setCurrentInputText("");
     setIsLoading(true);
 
-    const historyForAI: AiChatMessage[] = (dialogs[activeDialogId] || [])
+    const historyForAI: AiChatMessage[] = (dialogsData[activeDialogId]?.messages || [])
       .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl))
       .slice(0, -1) 
       .map(({ sender, text, imageUrl }) => ({ sender, text: text || "", imageUrl }));
@@ -209,15 +264,35 @@ export function ChatInterface() {
         history: historyForAI
       };
       const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
-      setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
-          msg.id === botLoadingMessageId ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false, imageError: false } : msg
-      )}));
+      setDialogsData(prev => {
+        const currentDialog = prev[activeDialogId!];
+        if (!currentDialog) return prev;
+        return {
+          ...prev,
+          [activeDialogId!]: {
+            ...currentDialog,
+            messages: currentDialog.messages.map(msg =>
+              msg.id === botLoadingMessageId ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false, imageError: false } : msg
+            ),
+          }
+        };
+      });
     } catch (error) {
       console.error("AI Error:", error);
       const errorText = error instanceof Error ? error.message : "An unknown error occurred.";
-      setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
-          msg.id === botLoadingMessageId ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageUrl: undefined, imageError: true } : msg
-      )}));
+      setDialogsData(prev => {
+        const currentDialog = prev[activeDialogId!];
+        if (!currentDialog) return prev;
+        return {
+          ...prev,
+          [activeDialogId!]: {
+            ...currentDialog,
+            messages: currentDialog.messages.map(msg =>
+              msg.id === botLoadingMessageId ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageUrl: undefined, imageError: true } : msg
+            ),
+          }
+        };
+      });
       toast({ variant: "destructive", title: "Error", description: `Failed to get response: ${errorText}` });
     } finally {
       setIsLoading(false);
@@ -254,7 +329,7 @@ export function ChatInterface() {
   };
 
   const handleSendUploadedImage = async () => {
-    if (!imageToUpload || !activeDialogId) {
+    if (!imageToUpload || !activeDialogId || !dialogsData[activeDialogId]) {
       toast({ variant: "destructive", title: "No Image Selected", description: "Please select an image to upload."});
       return;
     }
@@ -272,14 +347,26 @@ export function ChatInterface() {
         sender: "user",
         imageUrl: imageDataUri,
       };
-      setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), userMessage] }));
+      setDialogsData(prev => ({
+        ...prev,
+        [activeDialogId]: {
+          ...prev[activeDialogId],
+          messages: [...(prev[activeDialogId]?.messages || []), userMessage],
+        }
+      }));
 
       const botLoadingMessageId = (Date.now() + 1).toString();
-      setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }] }));
+      setDialogsData(prev => ({
+        ...prev,
+        [activeDialogId]: {
+          ...prev[activeDialogId],
+          messages: [...(prev[activeDialogId]?.messages || []), { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }],
+        }
+      }));
       
       setIsLoading(true); 
 
-      const historyForAI: AiChatMessage[] = (dialogs[activeDialogId] || [])
+      const historyForAI: AiChatMessage[] = (dialogsData[activeDialogId]?.messages || [])
         .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl))
         .slice(0, -1) 
         .map(({ sender, text, imageUrl }) => ({ sender, text: text || "", imageUrl }));
@@ -293,16 +380,36 @@ export function ChatInterface() {
           history: historyForAI,
         };
         const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
-        setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
-          msg.id === botLoadingMessageId ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false, imageError: false } : msg
-        )}));
+        setDialogsData(prev => {
+          const currentDialog = prev[activeDialogId!];
+          if (!currentDialog) return prev;
+          return {
+            ...prev,
+            [activeDialogId!]: {
+              ...currentDialog,
+              messages: currentDialog.messages.map(msg =>
+                msg.id === botLoadingMessageId ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false, imageError: false } : msg
+              ),
+            }
+          };
+        });
         toast({ title: "Image Sent & Processed", description: "AI has received your image."});
       } catch (error) {
         console.error("AI Error with Uploaded Image:", error);
         const errorText = error instanceof Error ? error.message : "An unknown error occurred processing the image.";
-        setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
-          msg.id === botLoadingMessageId ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageError: true } : msg
-        )}));
+        setDialogsData(prev => {
+          const currentDialog = prev[activeDialogId!];
+          if (!currentDialog) return prev;
+          return {
+            ...prev,
+            [activeDialogId!]: {
+              ...currentDialog,
+              messages: currentDialog.messages.map(msg =>
+                msg.id === botLoadingMessageId ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageError: true } : msg
+              ),
+            }
+          };
+        });
         toast({ variant: "destructive", title: "Processing Error", description: errorText });
       } finally {
         setIsLoading(false);
@@ -338,7 +445,7 @@ export function ChatInterface() {
   return (
     <>
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
-        <div className="font-headline text-2xl text-foreground flex items-center gap-2 shrink-0"> {/* Changed from CardTitle */}
+        <div className="font-headline text-2xl text-foreground flex items-center gap-2 shrink-0">
           <Icons.Chat className="w-7 h-7 text-accent" />
           Chat
           {modelDisplayName && <span className="text-sm font-normal text-muted-foreground ml-1">({modelDisplayName})</span>}
@@ -347,7 +454,7 @@ export function ChatInterface() {
           <Button variant="outline" size="sm" onClick={handleAddDialog} className="border-input hover:bg-accent/10">
             <Icons.PlusSquare className="w-4 h-4 mr-2" /> New Chat
           </Button>
-          {Object.keys(dialogs).length > 1 && (
+          {Object.keys(dialogsData).length > 1 && (
             <Button variant="outline" size="sm" onClick={() => handleDeleteDialog(activeDialogId!)} className="border-destructive/50 text-destructive hover:bg-destructive/10">
               <Icons.Trash2 className="w-4 h-4 mr-2" /> Delete Chat
             </Button>
@@ -357,11 +464,46 @@ export function ChatInterface() {
           
       <Tabs value={activeDialogId} onValueChange={setActiveDialogId} className="w-full flex flex-col flex-1">
         <TabsList className="w-full justify-start overflow-x-auto mb-4 shrink-0">
-          {Object.keys(dialogs).map((dialogId) => (
-            <TabsTrigger key={dialogId} value={dialogId} className="capitalize text-xs sm:text-sm">
-              {dialogId.replace(/-/g, ' ')}
-            </TabsTrigger>
-          ))}
+          {Object.keys(dialogsData).map((dialogId) => {
+            const dialogName = dialogsData[dialogId]?.name || dialogId.replace(/-/g, ' ');
+            return (
+              <TabsTrigger
+                key={dialogId}
+                value={dialogId}
+                className="capitalize text-xs sm:text-sm relative"
+                onDoubleClick={() => {
+                  setEditingDialogId(dialogId);
+                  setCurrentRenameValue(dialogName);
+                }}
+                title="Double-click to rename"
+              >
+                {editingDialogId === dialogId ? (
+                  <input
+                    type="text"
+                    value={currentRenameValue}
+                    onChange={(e) => setCurrentRenameValue(e.target.value)}
+                    onBlur={handleRenameSubmit}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleRenameSubmit();
+                      }
+                      if (e.key === 'Escape') {
+                        setEditingDialogId(null);
+                        setCurrentRenameValue(''); 
+                      }
+                    }}
+                    autoFocus
+                    className="text-xs sm:text-sm font-medium bg-transparent outline-none border-b border-accent text-foreground h-full p-0 m-0"
+                    style={{ minWidth: '50px', maxWidth: '150px' }}
+                    size={Math.max(10, currentRenameValue.length > 0 ? currentRenameValue.length : dialogName.length)}
+                  />
+                ) : (
+                  dialogName
+                )}
+              </TabsTrigger>
+            );
+          })}
         </TabsList>
 
         <Card className="w-full flex-1 flex flex-col shadow-2xl bg-card/80 backdrop-blur-sm overflow-hidden">
@@ -420,13 +562,15 @@ export function ChatInterface() {
                                         skeletonElement.classList.add('bg-destructive/10');
                                         skeletonElement.innerHTML = '<p class="text-xs text-destructive p-2 text-center">Error loading image</p>';
                                     }
-                                    if (!message.imageError) { 
+                                    if (!message.imageError && activeDialogId && dialogsData[activeDialogId]) { 
                                       toast({ variant: "destructive", title: "Image Load Error", description: "The image could not be displayed."});
-                                      setDialogs(prevDialogs => {
-                                        const updatedMsgs = (prevDialogs[activeDialogId!] || []).map(msg =>
+                                      setDialogsData(prevDialogs => {
+                                        const currentDialog = prevDialogs[activeDialogId!];
+                                        if (!currentDialog) return prevDialogs;
+                                        const updatedMsgs = currentDialog.messages.map(msg =>
                                           msg.id === message.id ? { ...msg, imageError: true, imageUrl: undefined } : msg
                                         );
-                                        return {...prevDialogs, [activeDialogId!]: updatedMsgs};
+                                        return {...prevDialogs, [activeDialogId!]: {...currentDialog, messages: updatedMsgs}};
                                       });
                                     }
                                   }}
@@ -488,7 +632,6 @@ export function ChatInterface() {
         </Card>
       </Tabs>
 
-      {/* Dialog for Uploading Image */}
       <Dialog open={isUploadImageDialogOpen} onOpenChange={setIsUploadImageDialogOpen}>
         <DialogContent 
             className="sm:max-w-lg bg-card border-border"
@@ -526,7 +669,6 @@ export function ChatInterface() {
                   isDragging ? "border-accent bg-accent/10" : "border-input",
                   imageToUpload ? "border-primary" : ""
                 )}
-                
               >
                 <Icons.UploadCloud className={cn("w-10 h-10 mb-3", isDragging ? "text-accent" : "text-muted-foreground")} />
                 <p className="text-sm text-muted-foreground">
@@ -586,4 +728,3 @@ export function ChatInterface() {
     </>
   );
 }
-
