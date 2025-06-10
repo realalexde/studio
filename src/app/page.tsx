@@ -34,11 +34,11 @@ export default function HomePage() {
             </CardFooter>
           </Card>
 
-          {/* Visual Code Card */}
+          {/* NoxStudio Card */}
           <Card className="bg-card/80 backdrop-blur-sm shadow-xl hover:shadow-2xl transition-shadow duration-300 flex flex-col">
             <CardHeader className="items-center text-center">
               <Icons.Code className="w-16 h-16 text-accent mb-4 mx-auto" />
-              <CardTitle className="text-2xl font-semibold">Visual Code Studio</CardTitle>
+              <CardTitle className="text-2xl font-semibold">NoxStudio</CardTitle>
             </CardHeader>
             <CardContent className="flex-grow">
               <CardDescription className="text-base text-muted-foreground">

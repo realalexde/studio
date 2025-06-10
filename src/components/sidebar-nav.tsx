@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 
 const navItems = [
   { href: "/chat", label: "Chat", icon: Icons.Chat },
-  { href: "/visual-code", label: "Visual Code", icon: Icons.Code },
+  { href: "/visual-code", label: "NoxStudio", icon: Icons.Code },
   { href: "/image-generator", label: "Image Generator", icon: Icons.Image },
 ];
 
