@@ -24,7 +24,7 @@ interface Message {
   imageUrl?: string;
 }
 
-const CHAT_HISTORY_LOCAL_STORAGE_KEY = "chatHistory";
+const CHAT_HISTORY_LOCAL_STORAGE_KEY = "chatHistory_v2"; // Changed key to avoid conflicts with old cookie format
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -38,7 +38,6 @@ export function ChatInterface() {
   const selectedModel = getSelectedModel();
   const modelDisplayName = selectedModel ? selectedModel.name : "";
 
-  // Load messages from localStorage on component mount
   useEffect(() => {
     try {
       const savedMessagesJson = localStorage.getItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
@@ -48,16 +47,16 @@ export function ChatInterface() {
           setMessages(
             loadedMessages.filter(msg =>
               typeof msg.id === 'string' &&
-              typeof msg.text === 'string' &&
+              (typeof msg.text === 'string' || typeof msg.imageUrl === 'string') && // Allow messages with only image
               (msg.sender === 'user' || msg.sender === 'bot') &&
-              !msg.isLoading
+              !msg.isLoading // Don't load messages that were in a loading state
             )
           );
         }
       }
     } catch (error) {
       console.error("Failed to load chat history from localStorage:", error);
-      localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY); // Clear corrupted data
+      localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
       toast({
         variant: "destructive",
         title: "Chat History Error",
@@ -65,9 +64,8 @@ export function ChatInterface() {
       });
     }
     setInitialLoadAttempted(true);
-  }, [toast]); // Added toast to dependencies
+  }, [toast]);
 
-  // Scroll to bottom and save messages to localStorage when messages change
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
@@ -78,24 +76,19 @@ export function ChatInterface() {
     }
 
     try {
+      // Only save if there are messages and none are in a loading state
       if (messages.length > 0 && !messages.some(msg => msg.isLoading)) {
-        const messagesToSave = messages.map(({ id, text, sender, avatar, imageUrl }) => ({
-          id, text, sender, avatar, imageUrl
-        }));
+         // Filter out isLoading before saving
+        const messagesToSave = messages.map(({ isLoading, ...rest }) => rest);
         const messagesJson = JSON.stringify(messagesToSave);
         localStorage.setItem(CHAT_HISTORY_LOCAL_STORAGE_KEY, messagesJson);
       } else if (messages.length === 0 && initialLoadAttempted) {
-        // If messages are empty and initial load is done, clear localStorage
-        // This handles the case where the user might clear messages through a UI action (if implemented)
+        // If messages are now empty and initial load is done, clear localStorage
         localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
       }
     } catch (error) {
       console.error("Failed to save chat history to localStorage:", error);
-      toast({
-        variant: "destructive",
-        title: "Chat History Error",
-        description: "Could not save chat history. LocalStorage might be full or unavailable.",
-      });
+      // Avoid toast spam if localStorage is truly unavailable
     }
   }, [messages, initialLoadAttempted, toast]);
 
@@ -127,12 +120,12 @@ export function ChatInterface() {
 
     const historyForAI: AiChatMessage[] = [...messages, userMessage]
       .filter(msg => !msg.isLoading && (msg.text.trim() !== "" || msg.imageUrl))
-      .map(({ sender, text }) => ({ sender, text }));
+      .map(({ sender, text }) => ({ sender, text: text || "" })); // Ensure text is always a string for AI
 
     try {
       const flowInput: SearchAndSummarizeInput = {
         query: input,
-        history: historyForAI.slice(0, -1) 
+        history: historyForAI.slice(0, -1)
       };
       const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
 
@@ -232,13 +225,33 @@ export function ChatInterface() {
                               width={300}
                               height={300}
                               className="object-contain w-full h-full"
-                              onLoadingComplete={(img) => img.parentElement?.classList.remove('bg-muted/50')}
+                              onLoadingComplete={(img) => {
+                                if (img.parentElement) {
+                                  img.parentElement.classList.remove('bg-muted/50', 'animate-pulse');
+                                  img.parentElement.classList.add('!bg-transparent');
+                                }
+                              }}
+                              onError={(e) => {
+                                console.error("Failed to load image:", e.currentTarget.src);
+                                toast({
+                                  variant: "destructive",
+                                  title: "Image Load Error",
+                                  description: "The generated image could not be displayed."
+                                });
+                                // Make skeleton static and indicate error or hide
+                                if (e.currentTarget.parentElement) {
+                                    e.currentTarget.parentElement.classList.remove('animate-pulse');
+                                    // Optionally change background to indicate error
+                                    // e.currentTarget.parentElement.classList.add('!bg-destructive/20');
+                                }
+                              }}
                               data-ai-hint="generated art"
                             />
                           </Skeleton>
                         </div>
                       )}
-                      {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
+                      {/* Ensure text is always rendered, even if empty string, to maintain structure */}
+                      {(message.text || (!message.text && !message.imageUrl)) && <p className="whitespace-pre-wrap">{message.text}</p>}
                     </>
                   )}
                 </div>
@@ -279,3 +292,4 @@ export function ChatInterface() {
     </Card>
   );
 }
+
