@@ -13,6 +13,7 @@ import {
   Brain,
   Download,
   Moon, // Added Moon icon
+  X, // Added X for Close icon
   type LucideIcon,
 } from 'lucide-react';
 
@@ -32,5 +33,6 @@ export const Icons = {
   Brain: Brain,
   Download: Download,
   Moon: Moon, // Export Moon icon
+  Close: X, // Added Close icon
 };
 
