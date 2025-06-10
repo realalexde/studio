@@ -111,7 +111,7 @@ export function ChatInterface() {
     <Card className="w-full h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)] flex flex-col shadow-2xl bg-card/80 backdrop-blur-sm">
       <CardHeader className="border-b border-border">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-           <CardTitle className="font-headline text-2xl text-foreground">AI Chat</CardTitle>
+           <CardTitle className="font-headline text-2xl text-foreground">Chat</CardTitle>
         </div>
          {isLoading && (
           <Alert className="border-accent text-sm mt-2">

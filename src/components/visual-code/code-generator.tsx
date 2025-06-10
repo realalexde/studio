@@ -63,7 +63,7 @@ export function CodeGenerator() {
     <Card className="w-full max-w-4xl mx-auto shadow-2xl bg-card/80 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="font-headline text-2xl text-foreground flex items-center gap-2">
-          <Icons.Code className="w-7 h-7 text-accent" /> AI Visual Code Generator
+          <Icons.Code className="w-7 h-7 text-accent" /> Visual Code Generator
         </CardTitle>
         <CardDescription>
           Describe the project you want to build, and the AI will generate the code and an explanation.

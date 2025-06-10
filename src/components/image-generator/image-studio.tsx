@@ -82,7 +82,7 @@ export function ImageStudio() {
     <Card className="w-full max-w-2xl mx-auto shadow-2xl bg-card/80 backdrop-blur-sm">
       <CardHeader>
         <CardTitle className="font-headline text-2xl text-foreground flex items-center gap-2">
-          <Icons.Image className="w-7 h-7 text-accent" /> AI Image Studio
+          <Icons.Image className="w-7 h-7 text-accent" /> Image Studio
         </CardTitle>
         <CardDescription>
           Describe the image you want to create. Optionally, enable prompt enhancement for more detailed generation.
