@@ -27,7 +27,7 @@ import {
 import { Input as UIDialogInput } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"; // Added Tabs components
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Message {
   id: string;
@@ -41,17 +41,17 @@ interface Message {
 
 const CHAT_DIALOGS_STORAGE_KEY = "nexusAiChatDialogs_v1";
 const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "nexusAiChatActiveDialogId_v1";
-const CHAT_NEXT_DIALOG_ID_COUNTER_STORAGE_KEY = "nexusAiChatIdCounter_v1";
+// Removed CHAT_NEXT_DIALOG_ID_COUNTER_STORAGE_KEY
 
 const DEFAULT_DIALOG_ID = "chat-1";
 
 export function ChatInterface() {
   const [dialogs, setDialogs] = useState<Record<string, Message[]>>({});
   const [activeDialogId, setActiveDialogId] = useState<string | null>(null);
-  const [nextDialogIdCounter, setNextDialogIdCounter] = useState<number>(1);
+  // Removed nextDialogIdCounter state
   
   const [input, setInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false); // For AI response loading
+  const [isLoading, setIsLoading] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -66,22 +66,20 @@ export function ChatInterface() {
   const selectedModel = getSelectedModel();
   const modelDisplayName = selectedModel ? selectedModel.name : "";
 
-  // Load from localStorage
   useEffect(() => {
     try {
       const savedDialogsJson = localStorage.getItem(CHAT_DIALOGS_STORAGE_KEY);
       const savedActiveDialogId = localStorage.getItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY);
-      const savedNextDialogIdCounter = localStorage.getItem(CHAT_NEXT_DIALOG_ID_COUNTER_STORAGE_KEY);
 
       let loadedDialogs: Record<string, Message[]> = {};
       if (savedDialogsJson) {
         const parsedDialogs = JSON.parse(savedDialogsJson);
-        // Ensure loaded dialogs have the correct structure
         Object.keys(parsedDialogs).forEach(id => {
           if (Array.isArray(parsedDialogs[id])) {
             loadedDialogs[id] = parsedDialogs[id].map((msg: any) => ({
               ...msg,
-              isLoading: false, // Ensure isLoading is false on load
+              isLoading: false,
+              imageError: msg.imageError || false, // Ensure imageError is initialized
               imageUrl: msg.imageError ? undefined : msg.imageUrl,
             })).filter(Boolean);
           }
@@ -89,21 +87,16 @@ export function ChatInterface() {
       }
 
       let currentActiveId = savedActiveDialogId;
-      let currentIdCounter = savedNextDialogIdCounter ? parseInt(savedNextDialogIdCounter, 10) : 1;
 
       if (Object.keys(loadedDialogs).length === 0) {
-        // No dialogs, create a default one
         loadedDialogs = { [DEFAULT_DIALOG_ID]: [] };
         currentActiveId = DEFAULT_DIALOG_ID;
-        currentIdCounter = 2; // Next ID will be chat-2
       } else if (!currentActiveId || !loadedDialogs[currentActiveId]) {
-        // Active ID is invalid or missing, set to first available
         currentActiveId = Object.keys(loadedDialogs)[0];
       }
       
       setDialogs(loadedDialogs);
       setActiveDialogId(currentActiveId);
-      setNextDialogIdCounter(currentIdCounter);
 
     } catch (error) {
       console.error("Failed to load chat history from localStorage:", error);
@@ -112,23 +105,18 @@ export function ChatInterface() {
         title: "Chat History Error",
         description: "Could not load previous chat history. Starting fresh.",
       });
-      // Reset to a clean state
       setDialogs({ [DEFAULT_DIALOG_ID]: [] });
       setActiveDialogId(DEFAULT_DIALOG_ID);
-      setNextDialogIdCounter(2);
       localStorage.removeItem(CHAT_DIALOGS_STORAGE_KEY);
       localStorage.removeItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY);
-      localStorage.removeItem(CHAT_NEXT_DIALOG_ID_COUNTER_STORAGE_KEY);
     }
     setInitialLoadComplete(true);
   }, [toast]);
 
-  // Save to localStorage
   useEffect(() => {
-    if (!initialLoadComplete || !activeDialogId) return; // Don't save until initial load is done and there's an active dialog
+    if (!initialLoadComplete || !activeDialogId) return; 
 
     try {
-      // Sanitize dialogs before saving (remove isLoading states)
       const dialogsToSave: Record<string, Message[]> = {};
       Object.entries(dialogs).forEach(([id, msgs]) => {
         dialogsToSave[id] = msgs.map(({ isLoading: _isLoading, ...rest }) => {
@@ -138,30 +126,48 @@ export function ChatInterface() {
 
       localStorage.setItem(CHAT_DIALOGS_STORAGE_KEY, JSON.stringify(dialogsToSave));
       localStorage.setItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY, activeDialogId);
-      localStorage.setItem(CHAT_NEXT_DIALOG_ID_COUNTER_STORAGE_KEY, nextDialogIdCounter.toString());
     } catch (error) {
       console.error("Failed to save chat history to localStorage:", error);
     }
-  }, [dialogs, activeDialogId, nextDialogIdCounter, initialLoadComplete]);
+  }, [dialogs, activeDialogId, initialLoadComplete]);
   
-  // Scroll to bottom
   useEffect(() => {
     if (scrollAreaRef.current) {
       scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
     }
-  }, [dialogs, activeDialogId]); // Scroll when active dialog messages change
+  }, [dialogs, activeDialogId]);
 
   const currentMessages = activeDialogId ? dialogs[activeDialogId] || [] : [];
 
   const handleAddDialog = () => {
-    const newDialogId = `chat-${nextDialogIdCounter}`;
+    const existingDialogNumbers = Object.keys(dialogs)
+      .map(id => {
+        const match = id.match(/^chat-(\d+)$/);
+        return match ? parseInt(match[1], 10) : null;
+      })
+      .filter(num => num !== null) as number[];
+    
+    let newDialogNumber = 1;
+    if (existingDialogNumbers.length > 0) {
+      existingDialogNumbers.sort((a, b) => a - b);
+      for (const num of existingDialogNumbers) {
+        if (newDialogNumber < num) {
+          break; 
+        }
+        if (newDialogNumber === num) {
+          newDialogNumber++; 
+        }
+      }
+    }
+
+    const newDialogId = `chat-${newDialogNumber}`;
+
     setDialogs(prevDialogs => ({
       ...prevDialogs,
       [newDialogId]: []
     }));
     setActiveDialogId(newDialogId);
-    setNextDialogIdCounter(prevCounter => prevCounter + 1);
-    setInput(""); // Clear input for new chat
+    setInput("");
   };
 
   const handleDeleteDialog = (dialogIdToDelete: string) => {
@@ -171,8 +177,6 @@ export function ChatInterface() {
         title: "Cannot Delete",
         description: "You must have at least one chat open.",
       });
-      // Or, reset the current one:
-      // setDialogs(prev => ({...prev, [dialogIdToDelete]: []}));
       return;
     }
 
@@ -181,11 +185,10 @@ export function ChatInterface() {
     setDialogs(updatedDialogs);
 
     if (activeDialogId === dialogIdToDelete) {
-      // Switch to the first available dialog or create a new one if none left (should not happen due to above check)
       const remainingDialogIds = Object.keys(updatedDialogs);
-      setActiveDialogId(remainingDialogIds[0] || null); // Set to first or null
-      if(remainingDialogIds.length === 0) { // Should ideally not be reached if the guard above works
-         handleAddDialog();
+      setActiveDialogId(remainingDialogIds[0] || null);
+      if(remainingDialogIds.length === 0) { 
+         handleAddDialog(); // Should ensure a default chat is created if all are deleted
       }
     }
   };
@@ -219,14 +222,13 @@ export function ChatInterface() {
     setIsLoading(true);
 
     const historyForAI: AiChatMessage[] = (dialogs[activeDialogId] || [])
-      .concat(userMessage) // Add current user message to history for AI
-      .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl))
+      .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl)) // Ensure userMessage for history is taken from dialogs
       .map(({ sender, text }) => ({ sender, text: text || "" }));
       
     try {
       const flowInput: SearchAndSummarizeInput = {
-        query: userMessage.text,
-        history: historyForAI.slice(0, -1) // History up to, but not including, the current user message
+        query: userMessage.text, // Query is still the fresh user input text
+        history: historyForAI.slice(0, -1) 
       };
       const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
 
@@ -293,7 +295,7 @@ export function ChatInterface() {
         ...prev,
         [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
           msg.id === botLoadingMessageId
-            ? { ...msg, text: `Here's the image for "${imageDialogPrompt}"`, imageUrl: result.imageUrl, isLoading: false }
+            ? { ...msg, text: `Here's the image for "${imageDialogPrompt}"`, imageUrl: result.imageUrl, isLoading: false, imageError: false }
             : msg
         )
       }));
@@ -383,7 +385,6 @@ export function ChatInterface() {
           )}
         </CardHeader>
 
-        {/* TabContent is implicitly handled by rendering based on activeDialogId */}
         <CardContent className="flex-1 p-0 overflow-hidden">
           <ScrollArea ref={scrollAreaRef} className="h-full p-4 md:p-6">
             <div className="space-y-6">
@@ -433,15 +434,12 @@ export function ChatInterface() {
                                 }}
                                 onError={(e) => {
                                   console.error("Failed to load image:", (e.target as HTMLImageElement).src);
-                                  const imageContainer = (e.target as HTMLImageElement).parentElement;
-                                  if(imageContainer){
-                                    const skeleton = imageContainer.querySelector('.absolute.inset-0.w-full.h-full.rounded-md.bg-muted\\/50.z-0') as HTMLElement | null;
-                                    if (skeleton) {
-                                      skeleton.style.display = 'flex'; // Ensure skeleton is visible
-                                      skeleton.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50');
-                                      skeleton.classList.add('bg-destructive/10');
-                                      skeleton.innerHTML = '<p class="text-xs text-destructive-foreground p-2 text-center">Error loading image</p>';
-                                    }
+                                  const skeletonElement = (e.target as HTMLImageElement).parentElement?.parentElement as HTMLElement | null;
+                                  if (skeletonElement) {
+                                    skeletonElement.style.display = 'flex'; 
+                                    skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50', '!bg-transparent');
+                                    skeletonElement.classList.add('bg-destructive/10', 'items-center', 'justify-center');
+                                    skeletonElement.innerHTML = '<p class="text-xs text-destructive-foreground p-2 text-center">Error loading image</p>';
                                   }
                                   if (!message.imageError) {
                                     toast({
@@ -449,7 +447,6 @@ export function ChatInterface() {
                                       title: "Image Load Error",
                                       description: "The generated image could not be displayed."
                                     });
-                                    // Update specific message in its dialog
                                     setDialogs(prevDialogs => {
                                       const updatedMsgs = (prevDialogs[activeDialogId!] || []).map(msg =>
                                         msg.id === message.id ? { ...msg, imageError: true, imageUrl: undefined } : msg
