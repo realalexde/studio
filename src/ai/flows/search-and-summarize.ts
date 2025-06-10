@@ -1,3 +1,4 @@
+
 // src/ai/flows/search-and-summarize.ts
 'use server';
 
@@ -28,17 +29,16 @@ export async function searchAndSummarize(input: SearchAndSummarizeInput): Promis
 
 const searchTool = ai.defineTool({
   name: 'search',
-  description: 'Performs a web search and returns the results.',
+  description: 'Performs a web search and returns information related to the query.',
   inputSchema: z.object({
     query: z.string().describe('The search query.'),
   }),
-  outputSchema: z.string(),
+  outputSchema: z.string().describe('Information found from the web search.'),
 },
 async (input) => {
-    // In a real application, this would call a search API like Google or DuckDuckGo.
-    // For this example, we'll just return a canned response.
-    console.log(`Searching for: ${input.query}`);
-    return `Simulated search results for query: ${input.query}.  The results indicate that the query is related to the following topics. This information should be summarized.`
+    console.log(`Simulated search for: ${input.query}`);
+    // Provide a slightly more content-rich, generic simulated response.
+    return `Simulated search findings for "${input.query}": This topic is generally well-documented. Key aspects often include its definition, main features, and common applications. For instance, if the query were about a technology, results would typically cover its purpose and benefits. This simulated information should be used to form the summary.`;
   }
 );
 
@@ -48,12 +48,16 @@ const summarizePrompt = ai.definePrompt({
   input: {schema: SearchAndSummarizeInputSchema},
   output: {schema: SearchAndSummarizeOutputSchema},
   tools: [searchTool],
-  prompt: `You are an AI assistant that answers user questions.
+  prompt: `You are an AI assistant. Your task is to answer the user's question: "{{{query}}}"
 
-  If the question requires retrieving information from the internet, use the available search tool to find relevant information.
-  Summarize the information from the search results to answer the question.
+To do this, you have access to a search tool.
+1. If the question requires external information, you MUST use the 'search' tool.
+2. The 'search' tool will provide you with information.
+3. Your final response MUST be a summary based *solely* on the information provided by the 'search' tool to answer "{{{query}}}".
+   Do not mention your own capabilities or limitations regarding accessing specific URLs or search engines.
+   Directly present the summarized answer to the user's question based on the tool's output.
 
-  Question: {{{query}}}`,
+User's Question: {{{query}}}`,
 });
 
 const searchAndSummarizeFlow = ai.defineFlow(
@@ -67,3 +71,4 @@ const searchAndSummarizeFlow = ai.defineFlow(
     return output!;
   }
 );
+
