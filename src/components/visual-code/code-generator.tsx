@@ -2,6 +2,9 @@
 "use client";
 
 import React, { useState, FormEvent } from "react";
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver'; // Typically used with jszip for downloads
+
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -13,14 +16,19 @@ import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-interface GeneratedCode {
-  projectCode: string;
+interface GeneratedFile {
+  fileName: string;
+  code: string;
+}
+
+interface GeneratedProject {
+  files: GeneratedFile[];
   explanation: string;
 }
 
 export function CodeGenerator() {
   const [request, setRequest] = useState("");
-  const [generatedCode, setGeneratedCode] = useState<GeneratedCode | null>(null);
+  const [generatedProject, setGeneratedProject] = useState<GeneratedProject | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
@@ -36,33 +44,78 @@ export function CodeGenerator() {
     }
 
     setIsLoading(true);
-    setGeneratedCode(null);
+    setGeneratedProject(null);
 
     try {
       const input: GenerateCodeProjectInput = { request };
       const result: GenerateCodeProjectOutput = await generateCodeProject(input);
-      setGeneratedCode(result);
-      toast({
-        title: "Code Generated",
-        description: "Your project code has been successfully generated.",
-      });
+      
+      if (!result.files || result.files.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Generation Error",
+          description: "The AI did not return any files. Please try again.",
+        });
+        setGeneratedProject({
+          files: [],
+          explanation: result.explanation || "The AI did not return any files. Please check the explanation or try again."
+        });
+      } else {
+        setGeneratedProject(result);
+        toast({
+          title: "Project Generated",
+          description: `Your project with ${result.files.length} file(s) has been successfully generated.`,
+        });
+      }
     } catch (error) {
       console.error("AI Code Generation Error:", error);
       const errorText = error instanceof Error ? error.message : "An unknown error occurred.";
-      // Keep the error message in a format that can be displayed
-      setGeneratedCode({ 
-        projectCode: `// Error generating code:\n// ${errorText}`, 
-        explanation: `Failed to generate code. ${errorText}\nPlease try rephrasing your request or try again later.` 
+      setGeneratedProject({ 
+        files: [{ fileName: "error.txt", code: `// Error generating project:\n// ${errorText}` }], 
+        explanation: `Failed to generate project. ${errorText}\nPlease try rephrasing your request or try again later.` 
       });
       toast({
         variant: "destructive",
         title: "Generation Error",
-        description: `Failed to generate code: ${errorText}`,
+        description: `Failed to generate project: ${errorText}`,
       });
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleDownloadZip = async () => {
+    if (!generatedProject || !generatedProject.files || generatedProject.files.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Files to Download",
+        description: "There are no files to include in the ZIP archive.",
+      });
+      return;
+    }
+
+    const zip = new JSZip();
+    generatedProject.files.forEach(file => {
+      zip.file(file.fileName, file.code);
+    });
+
+    try {
+      const zipBlob = await zip.generateAsync({ type: "blob" });
+      saveAs(zipBlob, "noxstudio-project.zip"); // saveAs comes from file-saver
+      toast({
+        title: "Download Started",
+        description: "Your project ZIP archive is being downloaded.",
+      });
+    } catch (error) {
+      console.error("Error creating ZIP file:", error);
+      toast({
+        variant: "destructive",
+        title: "ZIP Creation Error",
+        description: "Could not create the ZIP archive.",
+      });
+    }
+  };
+
 
   return (
     <Card className="w-full max-w-4xl mx-auto shadow-2xl bg-card/80 backdrop-blur-sm">
@@ -71,7 +124,7 @@ export function CodeGenerator() {
           <Icons.Code className="w-7 h-7 text-accent" /> NoxStudio
         </CardTitle>
         <CardDescription>
-          Describe the project you want to build. The AI will generate the code and an explanation.
+          Describe the project you want to build. The AI will generate the necessary files and an explanation.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -82,7 +135,7 @@ export function CodeGenerator() {
               id="project-request"
               value={request}
               onChange={(e) => setRequest(e.target.value)}
-              placeholder="e.g., A React component for a countdown timer."
+              placeholder="e.g., A simple To-Do list app with HTML, CSS, and JavaScript."
               className="min-h-[120px] mt-2 bg-input border-border focus-visible:ring-accent text-base"
               disabled={isLoading}
               rows={5}
@@ -92,53 +145,67 @@ export function CodeGenerator() {
           {isLoading && (
              <Alert className="border-accent text-sm mt-4">
                 <Icons.Brain className="h-5 w-5 text-accent animate-pulse" />
-                <AlertTitle className="text-accent font-semibold">Moonlight is Crafting Your Code...</AlertTitle>
+                <AlertTitle className="text-accent font-semibold">Moonlight is Crafting Your Project...</AlertTitle>
                 <AlertDescription className="text-muted-foreground">
-                  Please wait while the AI processes your request. Complex projects may take a bit longer.
+                  Please wait while the AI processes your request and generates the files. Complex projects may take a bit longer.
                 </AlertDescription>
             </Alert>
           )}
 
-          {!isLoading && generatedCode && (
-            <Tabs defaultValue="code" className="w-full mt-4">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="code">
-                  <Icons.Code className="mr-2 h-4 w-4" /> Generated Code
-                </TabsTrigger>
-                <TabsTrigger value="explanation">
+          {!isLoading && generatedProject && (
+            <Tabs defaultValue="explanation" className="w-full mt-4">
+              <TabsList className="grid w-full grid-cols-[auto_1fr]">
+                 <TabsTrigger value="explanation" className="whitespace-nowrap">
                   <Icons.Search className="mr-2 h-4 w-4" /> Explanation
                 </TabsTrigger>
+                {generatedProject.files && generatedProject.files.length > 0 && (
+                  <ScrollArea className="w-full whitespace-nowrap overflow-x-auto">
+                    <div className="flex">
+                    {generatedProject.files.map((file, index) => (
+                      <TabsTrigger key={index} value={`file-${index}`} className="text-xs px-2 py-1 h-auto">
+                        <Icons.Code className="mr-1 h-3 w-3" /> {file.fileName}
+                      </TabsTrigger>
+                    ))}
+                    </div>
+                  </ScrollArea>
+                )}
               </TabsList>
-              <TabsContent value="code" className="mt-4">
-                <Card className="border-border bg-muted/50">
-                  <CardHeader>
-                    <CardTitle className="text-lg">Code Output</CardTitle>
-                     <CardDescription>Review the generated code below. You can copy and paste it into your project.</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ScrollArea className="h-[400px] w-full rounded-md border border-border bg-background p-4 shadow">
-                      <pre className="text-sm font-code whitespace-pre-wrap">{generatedCode.projectCode}</pre>
-                    </ScrollArea>
-                  </CardContent>
-                </Card>
-              </TabsContent>
+              
               <TabsContent value="explanation" className="mt-4">
                  <Card className="border-border bg-muted/50">
                    <CardHeader>
-                    <CardTitle className="text-lg">AI Explanation</CardTitle>
-                    <CardDescription>Understand how the generated code works with this explanation.</CardDescription>
+                    <CardTitle className="text-lg">AI Explanation & Project Overview</CardTitle>
+                    <CardDescription>Understand how the generated project and its files work.</CardDescription>
                    </CardHeader>
                    <CardContent>
                     <ScrollArea className="h-[400px] w-full rounded-md border border-border bg-background p-4 shadow">
-                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{generatedCode.explanation}</p>
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{generatedProject.explanation}</p>
                     </ScrollArea>
                    </CardContent>
                  </Card>
               </TabsContent>
+
+              {generatedProject.files && generatedProject.files.map((file, index) => (
+                <TabsContent key={index} value={`file-${index}`} className="mt-4">
+                  <Card className="border-border bg-muted/50">
+                    <CardHeader>
+                      <CardTitle className="text-lg flex items-center gap-2">
+                        <Icons.Code className="w-5 h-5"/> File: {file.fileName}
+                      </CardTitle>
+                       <CardDescription>Content of the generated file.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <ScrollArea className="h-[400px] w-full rounded-md border border-border bg-background p-4 shadow">
+                        <pre className="text-sm font-code whitespace-pre-wrap">{file.code}</pre>
+                      </ScrollArea>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              ))}
             </Tabs>
           )}
         </CardContent>
-        <CardFooter className="border-t border-border pt-6">
+        <CardFooter className="border-t border-border pt-6 flex flex-col sm:flex-row justify-between items-center gap-4">
           <Button type="submit" disabled={isLoading} size="lg" className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-base">
             {isLoading ? (
               <>
@@ -148,10 +215,22 @@ export function CodeGenerator() {
             ) : (
               <>
                 <Icons.Brain className="mr-2 h-5 w-5" />
-                Generate Project Code
+                Generate Project
               </>
             )}
           </Button>
+          {generatedProject && generatedProject.files && generatedProject.files.length > 0 && !isLoading && (
+            <Button
+              type="button"
+              onClick={handleDownloadZip}
+              variant="outline"
+              size="lg"
+              className="w-full sm:w-auto"
+            >
+              <Icons.Download className="mr-2 h-5 w-5" />
+              Download Project (.zip)
+            </Button>
+          )}
         </CardFooter>
       </form>
     </Card>
