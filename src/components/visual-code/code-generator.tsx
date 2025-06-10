@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, FormEvent } from "react";
@@ -9,6 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Icons } from "@/components/icons";
 import { generateCodeProject, GenerateCodeProjectInput, GenerateCodeProjectOutput } from "@/ai/flows/generate-code-project";
 import { useToast } from "@/hooks/use-toast";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface GeneratedCode {
   projectCode: string;
@@ -82,7 +84,18 @@ export function CodeGenerator() {
             />
           </div>
 
-          {generatedCode && (
+          {isLoading && (
+             <Alert className="border-accent text-sm">
+                <Icons.Brain className="h-5 w-5 text-accent" />
+                <AlertTitle className="text-accent font-semibold">AI Code Generation in Progress</AlertTitle>
+                <AlertDescription className="text-muted-foreground">
+                  Our AI is working on your project request. This can take a few moments, 
+                  especially for complex projects. Thanks for your patience!
+                </AlertDescription>
+            </Alert>
+          )}
+
+          {generatedCode && !isLoading && (
             <div className="space-y-4">
               <div>
                 <h3 className="text-lg font-semibold text-foreground mb-2">Generated Code:</h3>
@@ -96,13 +109,6 @@ export function CodeGenerator() {
                   <p className="text-sm whitespace-pre-wrap">{generatedCode.explanation}</p>
                 </ScrollArea>
               </div>
-            </div>
-          )}
-
-          {isLoading && (
-             <div className="flex items-center justify-center p-6 bg-muted rounded-md">
-                <Icons.Spinner className="mr-2 h-6 w-6 animate-spin text-accent" />
-                <p className="text-muted-foreground">Generating code, please wait...</p>
             </div>
           )}
 

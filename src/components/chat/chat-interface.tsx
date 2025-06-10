@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useRef, useEffect, FormEvent } from "react";
@@ -12,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Message {
   id: string;
@@ -61,11 +63,12 @@ export function ChatInterface() {
     try {
       let botResponseText = "";
       if (useSearch) {
-        toast({ title: "Searching...", description: "Using external search to enhance response." });
+        // Toast is still useful for immediate feedback
+        // toast({ title: "Searching...", description: "Using external search to enhance response." });
         const searchInput: SearchAndSummarizeInput = { query: input || "Provide general information based on search." };
         const result = await searchAndSummarize(searchInput);
         botResponseText = result.summary;
-        setUseSearch(false); // Reset search toggle after use
+        // Don't reset useSearch here, let the alert handle its visibility based on isLoading
       } else {
         const enhancedResponseInput: GenerateEnhancedResponseInput = { query: input };
         const result = await generateEnhancedResponse(enhancedResponseInput);
@@ -97,6 +100,9 @@ export function ChatInterface() {
       });
     } finally {
       setIsLoading(false);
+      // If search was used, toggle it off after completion if desired,
+      // or keep it on for subsequent messages. For now, let's keep it as is.
+      // if (useSearch) setUseSearch(false); // Optional: reset search toggle
     }
   };
   
@@ -124,6 +130,16 @@ export function ChatInterface() {
             </Label>
             </div>
         </div>
+        {isLoading && useSearch && (
+          <Alert className="mt-4 border-accent text-sm">
+            <Icons.Search className="h-5 w-5 text-accent" />
+            <AlertTitle className="text-accent font-semibold">Web Search Active</AlertTitle>
+            <AlertDescription className="text-muted-foreground">
+              The AI is currently performing a web search to gather the latest information. 
+              This helps provide a more comprehensive and up-to-date response. Please allow a moment.
+            </AlertDescription>
+          </Alert>
+        )}
       </CardHeader>
       <CardContent className="flex-1 p-0 overflow-hidden">
         <ScrollArea ref={scrollAreaRef} className="h-full p-4 md:p-6">
