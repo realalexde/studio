@@ -3,8 +3,8 @@ import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 
 export const metadata: Metadata = {
-  title: 'Moonlight AI',
-  description: 'Your intelligent assistant for chat, code, and image generation, powered by Moonlight.',
+  title: 'Nox AI',
+  description: 'Your intelligent assistant for chat, code, and image generation, powered by Nox AI.',
 };
 
 export default function RootLayout({

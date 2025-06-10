@@ -39,8 +39,8 @@ interface Message {
   imageError?: boolean;
 }
 
-const CHAT_DIALOGS_STORAGE_KEY = "moonlightAiChatDialogs_v1";
-const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "moonlightAiChatActiveDialogId_v1";
+const CHAT_DIALOGS_STORAGE_KEY = "noxAiChatDialogs_v1";
+const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "noxAiChatActiveDialogId_v1";
 
 const DEFAULT_DIALOG_ID = "chat-1";
 
