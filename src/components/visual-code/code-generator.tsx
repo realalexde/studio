@@ -3,7 +3,7 @@
 
 import React, { useState, FormEvent } from "react";
 import JSZip from 'jszip';
-import { saveAs } from 'file-saver'; // Typically used with jszip for downloads
+import { saveAs } from 'file-saver'; 
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +15,7 @@ import { generateCodeProject, GenerateCodeProjectInput, GenerateCodeProjectOutpu
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch"; // Added Switch import
 
 interface GeneratedFile {
   fileName: string;
@@ -30,6 +31,7 @@ export function CodeGenerator() {
   const [request, setRequest] = useState("");
   const [generatedProject, setGeneratedProject] = useState<GeneratedProject | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [enhanceRequest, setEnhanceRequest] = useState(false); // State for enhancement toggle
   const { toast } = useToast();
 
   const handleSubmit = async (e: FormEvent) => {
@@ -47,7 +49,10 @@ export function CodeGenerator() {
     setGeneratedProject(null);
 
     try {
-      const input: GenerateCodeProjectInput = { request };
+      const input: GenerateCodeProjectInput = { 
+        request,
+        enhanceRequest: enhanceRequest // Pass enhance option to the flow
+      };
       const result: GenerateCodeProjectOutput = await generateCodeProject(input);
       
       if (!result.files || result.files.length === 0) {
@@ -64,7 +69,7 @@ export function CodeGenerator() {
         setGeneratedProject(result);
         toast({
           title: "Project Generated",
-          description: `Your project with ${result.files.length} file(s) has been successfully generated.`,
+          description: `Your project with ${result.files.length} file(s) has been successfully generated ${enhanceRequest ? 'using an enhanced request' : ''}.`,
         });
       }
     } catch (error) {
@@ -101,7 +106,7 @@ export function CodeGenerator() {
 
     try {
       const zipBlob = await zip.generateAsync({ type: "blob" });
-      saveAs(zipBlob, "noxstudio-project.zip"); // saveAs comes from file-saver
+      saveAs(zipBlob, "noxstudio-project.zip"); 
       toast({
         title: "Download Started",
         description: "Your project ZIP archive is being downloaded.",
@@ -124,7 +129,7 @@ export function CodeGenerator() {
           <Icons.Code className="w-7 h-7 text-accent" /> NoxStudio
         </CardTitle>
         <CardDescription>
-          Describe the project you want to build. The AI will generate the necessary files and an explanation.
+          Describe the project you want to build. The AI will generate the necessary files and an explanation. Optionally, enhance your request for more detailed output.
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>
@@ -142,12 +147,23 @@ export function CodeGenerator() {
             />
           </div>
 
+          <div className="flex items-center space-x-2">
+            <Switch
+              id="enhance-request-toggle"
+              checked={enhanceRequest}
+              onCheckedChange={setEnhanceRequest}
+              disabled={isLoading}
+            />
+            <Label htmlFor="enhance-request-toggle" className="text-sm">Enhance Project Request for Better Output</Label>
+          </div>
+
+
           {isLoading && (
              <Alert className="border-accent text-sm mt-4">
                 <Icons.Brain className="h-5 w-5 text-accent animate-pulse" />
                 <AlertTitle className="text-accent font-semibold">Moonlight is Crafting Your Project...</AlertTitle>
                 <AlertDescription className="text-muted-foreground">
-                  Please wait while the AI processes your request and generates the files. Complex projects may take a bit longer.
+                  Please wait while the AI processes your request {enhanceRequest ? ' (including enhancement) ' : ''}and generates the files. Complex projects may take a bit longer.
                 </AlertDescription>
             </Alert>
           )}
@@ -236,3 +252,5 @@ export function CodeGenerator() {
     </Card>
   );
 }
+
+    
