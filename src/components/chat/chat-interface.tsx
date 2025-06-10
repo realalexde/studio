@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, FormEvent } from "react";
+import Image from "next/image"; // Added Next Image
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,6 +12,7 @@ import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, 
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton"; // Added Skeleton
 
 interface Message {
   id: string;
@@ -18,6 +20,7 @@ interface Message {
   sender: "user" | "bot";
   avatar?: string;
   isLoading?: boolean;
+  imageUrl?: string; // Added imageUrl
 }
 
 export function ChatInterface() {
@@ -63,17 +66,16 @@ export function ChatInterface() {
       .map(({ sender, text }) => ({ sender, text }));
 
     try {
-      const searchInput: SearchAndSummarizeInput = { 
+      const flowInput: SearchAndSummarizeInput = { 
         query: input,
         history: historyForAI
       };
-      const result: SearchAndSummarizeOutput = await searchAndSummarize(searchInput);
-      const botResponseText = result.summary;
+      const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
       
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
           msg.id === botLoadingMessageId
-            ? { ...msg, text: botResponseText, isLoading: false }
+            ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false }
             : msg
         )
       );
@@ -84,7 +86,7 @@ export function ChatInterface() {
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
           msg.id === botLoadingMessageId
-            ? { ...msg, text: `Error: ${errorText}`, isLoading: false }
+            ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageUrl: undefined }
             : msg
         )
       );
@@ -114,9 +116,9 @@ export function ChatInterface() {
          {isLoading && (
           <Alert className="border-accent text-sm mt-2">
             <Icons.Search className="h-5 w-5 text-accent" />
-            <AlertTitle className="text-accent font-semibold">AI Thinking...</AlertTitle>
+            <AlertTitle className="text-accent font-semibold">Moonlight is Thinking...</AlertTitle>
             <AlertDescription className="text-muted-foreground">
-              The AI may use simulated internet search for up-to-date info. This might take a moment.
+              The AI may use simulated internet search or generate an image. This might take a moment.
             </AlertDescription>
           </Alert>
         )}
@@ -132,31 +134,48 @@ export function ChatInterface() {
                 }`}
               >
                 {message.sender === "bot" && (
-                  <Avatar className="w-8 h-8 border border-accent">
+                  <Avatar className="w-8 h-8 border border-accent self-start">
                     <AvatarImage src={message.avatar} />
                     <AvatarFallback>
-                      <Icons.Bot className="w-5 h-5 text-accent" />
+                      <Icons.Moon className="w-5 h-5 text-accent" />
                     </AvatarFallback>
                   </Avatar>
                 )}
                 <div
-                  className={`max-w-[70%] p-3 rounded-xl shadow ${
+                  className={`max-w-[70%] rounded-xl shadow ${
                     message.sender === "user"
-                      ? "bg-primary text-primary-foreground rounded-br-none"
-                      : "bg-secondary text-secondary-foreground rounded-bl-none"
-                  }`}
+                      ? "bg-primary text-primary-foreground rounded-br-none p-3"
+                      : "bg-secondary text-secondary-foreground rounded-bl-none" 
+                  } ${message.imageUrl ? "p-2" : "p-3"}`}
                 >
                   {message.isLoading ? (
-                    <div className="flex items-center space-x-2">
+                    <div className="flex items-center space-x-2 p-3">
                       <Icons.Spinner className="w-4 h-4 animate-spin" />
                       <span>Thinking...</span>
                     </div>
                   ) : (
-                    <p className="whitespace-pre-wrap">{message.text}</p>
+                    <>
+                      {message.imageUrl && (
+                        <div className="mb-2 rounded-md overflow-hidden border border-border">
+                           <Skeleton className="w-full aspect-square rounded-md bg-muted/50">
+                            <Image
+                              src={message.imageUrl}
+                              alt={message.text || "Generated AI Image"}
+                              width={300}
+                              height={300}
+                              className="object-contain w-full h-full"
+                              onLoadingComplete={(img) => img.parentElement?.classList.remove('bg-muted/50')}
+                              data-ai-hint="generated art"
+                            />
+                          </Skeleton>
+                        </div>
+                      )}
+                      {message.text && <p className="whitespace-pre-wrap">{message.text}</p>}
+                    </>
                   )}
                 </div>
                 {message.sender === "user" && (
-                  <Avatar className="w-8 h-8 border border-primary">
+                  <Avatar className="w-8 h-8 border border-primary self-start">
                     <AvatarImage src={message.avatar} />
                     <AvatarFallback>
                       <Icons.User className="w-5 h-5 text-primary" />
@@ -174,7 +193,7 @@ export function ChatInterface() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type your message..."
+            placeholder="Ask Moonlight for information or to generate an image..."
             className="flex-1 resize-none min-h-[40px] max-h-[120px] bg-input border-border focus-visible:ring-accent"
             disabled={isLoading}
             rows={1}
@@ -192,3 +211,4 @@ export function ChatInterface() {
     </Card>
   );
 }
+

@@ -1,3 +1,4 @@
+
 import {
   Zap,
   MessageSquare,
@@ -10,7 +11,8 @@ import {
   Settings2,
   Search,
   Brain,
-  Download, // Added Download icon
+  Download,
+  Moon, // Added Moon icon
   type LucideIcon,
 } from 'lucide-react';
 
@@ -21,12 +23,14 @@ export const Icons = {
   Chat: MessageSquare,
   Code: Code2,
   Image: ImageIcon,
-  Bot: Bot,
+  Bot: Moon, // Changed Bot to Moon
   User: User,
   Spinner: Loader2,
   Send: Send,
   Settings: Settings2,
   Search: Search,
   Brain: Brain,
-  Download: Download, // Added Download icon
+  Download: Download,
+  Moon: Moon, // Export Moon icon
 };
+
