@@ -100,6 +100,14 @@ const generateImageTool = ai.defineTool(
     if (!imageResult.media?.url) {
       throw new Error('Image generation failed: Model did not return an image URL.');
     }
+
+    // Heuristic check for minimal/placeholder images
+    const MIN_IMAGE_DATA_URL_LENGTH = 500; // Adjusted threshold based on typical small placeholders
+    if (imageResult.media.url.startsWith('data:image/') && imageResult.media.url.length < MIN_IMAGE_DATA_URL_LENGTH) {
+        console.warn(`Image generation returned a very small image (length: ${imageResult.media.url.length}). Treating as failure. Prompt: ${input.imagePrompt}`);
+        throw new Error('Image generation failed: Model returned a minimal or placeholder image.');
+    }
+
     return { imageUrl: imageResult.media.url };
   }
 );

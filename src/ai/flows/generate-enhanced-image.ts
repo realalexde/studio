@@ -102,6 +102,13 @@ const generateEnhancedImageFlow = ai.defineFlow(
       throw new Error('Failed to generate image. The model did not return an image URL.');
     }
 
+    // Heuristic check for minimal/placeholder images
+    const MIN_IMAGE_DATA_URL_LENGTH = 500; // Adjusted threshold
+    if (imageResult.media.url.startsWith('data:image/') && imageResult.media.url.length < MIN_IMAGE_DATA_URL_LENGTH) {
+        console.warn(`Image generation returned a very small image (length: ${imageResult.media.url.length}). Prompt: ${finalPrompt}. Treating as failure.`);
+        throw new Error('Failed to generate image: Model returned a minimal or placeholder image.');
+    }
+
     return {imageUrl: imageResult.media.url};
   }
 );
