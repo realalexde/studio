@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
 import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, AiChatMessage } from "@/ai/flows/search-and-summarize";
-import { generateEnhancedImage, GenerateEnhancedImageInput, GenerateEnhancedImageOutput } from "@/ai/flows/generate-enhanced-image";
+// import { generateEnhancedImage, GenerateEnhancedImageInput, GenerateEnhancedImageOutput } from "@/ai/flows/generate-enhanced-image"; // No longer used directly from dialog
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -24,9 +24,9 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
-import { Input as UIDialogInput } from "@/components/ui/input";
+import { Input as UIDialogInput } from "@/components/ui/input"; // Renamed to avoid conflict with local 'input' state
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
+// import { Switch } from "@/components/ui/switch"; // No longer used in this dialog
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Message {
@@ -41,25 +41,26 @@ interface Message {
 
 const CHAT_DIALOGS_STORAGE_KEY = "noxAiChatDialogs_v1";
 const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "noxAiChatActiveDialogId_v1";
-
 const DEFAULT_DIALOG_ID = "chat-1";
 
 export function ChatInterface() {
   const [dialogs, setDialogs] = useState<Record<string, Message[]>>({});
   const [activeDialogId, setActiveDialogId] = useState<string | null>(null);
   
-  const [input, setInput] = useState("");
+  const [currentInputText, setCurrentInputText] = useState(""); // Renamed from 'input'
   const [isLoading, setIsLoading] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { getSelectedModel } = useModel();
 
-  const [isImageDialogOpgen, setIsImageDialogOpgen] = useState(false);
-  const [imageDialogPrompt, setImageDialogPrompt] = useState("");
-  const [enhanceDialogPrompt, setEnhanceDialogPrompt] = useState(false);
-  const [isGeneratingDialogImage, setIsGeneratingDialogImage] = useState(false);
+  const [isUploadImageDialogOpen, setIsUploadImageDialogOpen] = useState(false);
+  const [imageToUpload, setImageToUpload] = useState<File | null>(null);
+  const [uploadAccompanyingText, setUploadAccompanyingText] = useState("");
+  const [isProcessingUpload, setIsProcessingUpload] = useState(false);
+
 
   const selectedModel = getSelectedModel();
   const modelDisplayName = selectedModel ? selectedModel.name : "";
@@ -157,172 +158,136 @@ export function ChatInterface() {
         }
       }
     }
-
     const newDialogId = `chat-${newDialogNumber}`;
-
-    setDialogs(prevDialogs => ({
-      ...prevDialogs,
-      [newDialogId]: []
-    }));
+    setDialogs(prevDialogs => ({ ...prevDialogs, [newDialogId]: [] }));
     setActiveDialogId(newDialogId);
-    setInput("");
+    setCurrentInputText("");
   };
 
   const handleDeleteDialog = (dialogIdToDelete: string) => {
     if (Object.keys(dialogs).length <= 1) {
-      toast({
-        variant: "destructive",
-        title: "Cannot Delete",
-        description: "You must have at least one chat open.",
-      });
+      toast({ variant: "destructive", title: "Cannot Delete", description: "You must have at least one chat open." });
       return;
     }
-
     const updatedDialogs = { ...dialogs };
     delete updatedDialogs[dialogIdToDelete];
     setDialogs(updatedDialogs);
-
     if (activeDialogId === dialogIdToDelete) {
       const remainingDialogIds = Object.keys(updatedDialogs);
       setActiveDialogId(remainingDialogIds[0] || null);
-      if(remainingDialogIds.length === 0) { 
-         handleAddDialog(); 
-      }
+      if(remainingDialogIds.length === 0) { handleAddDialog(); }
     }
   };
 
-
   const handleSendMessage = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!input.trim() || !activeDialogId) return;
+    if (!currentInputText.trim() || !activeDialogId) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      text: input,
+      text: currentInputText,
       sender: "user",
     };
-
-    setDialogs(prevDialogs => ({
-      ...prevDialogs,
-      [activeDialogId]: [...(prevDialogs[activeDialogId] || []), userMessage]
-    }));
+    setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), userMessage] }));
     
     const botLoadingMessageId = (Date.now() + 1).toString();
-    setDialogs(prevDialogs => ({
-      ...prevDialogs,
-      [activeDialogId]: [
-        ...(prevDialogs[activeDialogId] || []),
-        { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }
-      ]
-    }));
+    setDialogs(prev => ({ ...prev, [activeDialogId]: [ ...(prev[activeDialogId] || []), { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }] }));
 
-    setInput("");
+    setCurrentInputText("");
     setIsLoading(true);
 
     const historyForAI: AiChatMessage[] = (dialogs[activeDialogId] || [])
-      .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl)) 
-      .map(({ sender, text }) => ({ sender, text: text || "" }));
-      
+      .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl))
+      .slice(0, -1) // Exclude the current user message we just added for display
+      .map(({ sender, text, imageUrl }) => ({ sender, text: text || "", imageUrl }));
+          
     try {
       const flowInput: SearchAndSummarizeInput = {
         query: userMessage.text, 
-        history: historyForAI.slice(0, -1) 
+        history: historyForAI
       };
       const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
-
-      setDialogs(prevDialogs => ({
-        ...prevDialogs,
-        [activeDialogId]: (prevDialogs[activeDialogId] || []).map(msg =>
-          msg.id === botLoadingMessageId
-            ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false, imageError: false }
-            : msg
-        )
-      }));
-
+      setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
+          msg.id === botLoadingMessageId ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false, imageError: false } : msg
+      )}));
     } catch (error) {
       console.error("AI Error:", error);
       const errorText = error instanceof Error ? error.message : "An unknown error occurred.";
-      setDialogs(prevDialogs => ({
-        ...prevDialogs,
-        [activeDialogId]: (prevDialogs[activeDialogId] || []).map(msg =>
-          msg.id === botLoadingMessageId
-            ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageUrl: undefined, imageError: true }
-            : msg
-        )
-      }));
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: `Failed to get response: ${errorText}`,
-      });
+      setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
+          msg.id === botLoadingMessageId ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageUrl: undefined, imageError: true } : msg
+      )}));
+      toast({ variant: "destructive", title: "Error", description: `Failed to get response: ${errorText}` });
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleGenerateImageFromDialog = async () => {
-    if (!imageDialogPrompt.trim() || !activeDialogId) {
-      toast({
-        variant: "destructive",
-        title: "Empty Prompt or No Active Chat",
-        description: "Please enter a prompt for the image and ensure a chat is active.",
-      });
+  const handleSendUploadedImage = async () => {
+    if (!imageToUpload || !activeDialogId) {
+      toast({ variant: "destructive", title: "No Image Selected", description: "Please select an image to upload."});
       return;
     }
-    setIsGeneratingDialogImage(true);
-    setIsImageDialogOpgen(false);
+    setIsProcessingUpload(true);
+    setIsUploadImageDialogOpen(false);
 
-    const userMessageText = `Requested image: "${imageDialogPrompt}" ${enhanceDialogPrompt ? "(enhanced)" : ""}`;
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      text: userMessageText,
-      sender: "user",
-    };
-    setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), userMessage] }));
+    const reader = new FileReader();
+    reader.readAsDataURL(imageToUpload);
+    reader.onload = async () => {
+      const imageDataUri = reader.result as string;
 
-    const botLoadingMessageId = (Date.now() + 1).toString();
-    setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }] }));
-
-    try {
-      const genInput: GenerateEnhancedImageInput = {
-        prompt: imageDialogPrompt,
-        enhance: enhanceDialogPrompt,
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        text: uploadAccompanyingText,
+        sender: "user",
+        imageUrl: imageDataUri,
       };
-      const result: GenerateEnhancedImageOutput = await generateEnhancedImage(genInput);
-      setDialogs(prev => ({
-        ...prev,
-        [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
-          msg.id === botLoadingMessageId
-            ? { ...msg, text: `Here's the image for "${imageDialogPrompt}"`, imageUrl: result.imageUrl, isLoading: false, imageError: false }
-            : msg
-        )
-      }));
-      toast({
-        title: "Image Generated",
-        description: "Image from dialog added to chat.",
-      });
-    } catch (error) {
-      console.error("Dialog Image Generation Error:", error);
-      const errorText = error instanceof Error ? error.message : "An unknown error occurred.";
-      setDialogs(prev => ({
-        ...prev,
-        [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
-          msg.id === botLoadingMessageId
-            ? { ...msg, text: `Error generating image: ${errorText}`, isLoading: false, imageError: true }
-            : msg
-        )
-      }));
-      toast({
-        variant: "destructive",
-        title: "Image Generation Error",
-        description: errorText,
-      });
-    } finally {
-      setIsGeneratingDialogImage(false);
-      setImageDialogPrompt("");
-      setEnhanceDialogPrompt(false);
-    }
+      setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), userMessage] }));
+
+      const botLoadingMessageId = (Date.now() + 1).toString();
+      setDialogs(prev => ({ ...prev, [activeDialogId]: [...(prev[activeDialogId] || []), { id: botLoadingMessageId, text: "", sender: "bot", isLoading: true }] }));
+      
+      setIsLoading(true); // General loading state for AI response
+
+      const historyForAI: AiChatMessage[] = (dialogs[activeDialogId] || [])
+        .filter(msg => !msg.isLoading && (msg.text?.trim() !== "" || msg.imageUrl))
+        .slice(0, -1) // Exclude current user message with image
+        .map(({ sender, text, imageUrl }) => ({ sender, text: text || "", imageUrl }));
+
+      try {
+        const flowInput: SearchAndSummarizeInput = {
+          query: {
+            text: uploadAccompanyingText || undefined, // "Describe this image." or similar could be a default
+            imageUrl: imageDataUri,
+          },
+          history: historyForAI,
+        };
+        const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
+        setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
+          msg.id === botLoadingMessageId ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false, imageError: false } : msg
+        )}));
+        toast({ title: "Image Sent & Processed", description: "AI has received your image."});
+      } catch (error) {
+        console.error("AI Error with Uploaded Image:", error);
+        const errorText = error instanceof Error ? error.message : "An unknown error occurred processing the image.";
+        setDialogs(prev => ({ ...prev, [activeDialogId]: (prev[activeDialogId] || []).map(msg =>
+          msg.id === botLoadingMessageId ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageError: true } : msg
+        )}));
+        toast({ variant: "destructive", title: "Processing Error", description: errorText });
+      } finally {
+        setIsLoading(false);
+        setIsProcessingUpload(false);
+        setImageToUpload(null);
+        setUploadAccompanyingText("");
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+      }
+    };
+    reader.onerror = (error) => {
+      console.error("File Reading Error:", error);
+      toast({ variant: "destructive", title: "File Error", description: "Could not read the selected image file."});
+      setIsProcessingUpload(false);
+    };
   };
+
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -372,12 +337,12 @@ export function ChatInterface() {
             </TabsList>
           </Tabs>
 
-           {(isLoading || isGeneratingDialogImage) && (
+           {(isLoading || isProcessingUpload) && (
             <Alert className="border-accent text-sm mt-2">
               <Icons.Search className="h-5 w-5 text-accent" />
               <AlertTitle className="text-accent font-semibold">Moonlight is Thinking...</AlertTitle>
               <AlertDescription className="text-muted-foreground">
-                The AI may use simulated internet search or generate an image. This might take a moment.
+                The AI may be processing your text or image. This might take a moment.
               </AlertDescription>
             </Alert>
           )}
@@ -404,7 +369,7 @@ export function ChatInterface() {
                   <div
                     className={`max-w-[70%] rounded-xl shadow ${
                       message.sender === "user"
-                        ? "bg-primary text-primary-foreground rounded-br-none p-3"
+                        ? "bg-primary text-primary-foreground rounded-br-none" 
                         : "bg-secondary text-secondary-foreground rounded-bl-none"
                     } ${message.imageUrl && !message.imageError ? "p-2" : "p-3"}`}
                   >
@@ -420,7 +385,7 @@ export function ChatInterface() {
                             <Skeleton className="absolute inset-0 w-full h-full rounded-md bg-muted/50 z-0" />
                             <Image
                                 src={message.imageUrl}
-                                alt={message.text || "Generated AI Image"}
+                                alt={message.text || (message.sender === "user" ? "Uploaded image" : "Generated AI Image")}
                                 layout="fill"
                                 objectFit="contain"
                                 className="relative z-10"
@@ -432,19 +397,15 @@ export function ChatInterface() {
                                 }}
                                 onError={(e) => {
                                   console.error("Failed to load image:", (e.target as HTMLImageElement).src);
-                                  const skeletonElement = (e.target as HTMLImageElement).parentElement?.parentElement as HTMLElement | null;
-                                  if (skeletonElement) {
-                                    skeletonElement.style.display = 'flex'; 
-                                    skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50');
-                                    skeletonElement.classList.add('bg-destructive/10', 'items-center', 'justify-center');
-                                    skeletonElement.innerHTML = '<p class="text-xs text-destructive-foreground p-2 text-center">Error loading image</p>';
+                                  const imageContainer = (e.target as HTMLImageElement).parentElement as HTMLElement | null;
+                                  if (imageContainer) {
+                                    const skeleton = imageContainer.querySelector('.absolute.inset-0.w-full.h-full.rounded-md.bg-muted\\/50.z-0') as HTMLElement | null;
+                                    if(skeleton) skeleton.style.display = 'none'; // Hide skeleton
+                                    imageContainer.innerHTML = '<p class="text-xs text-destructive p-2 text-center flex items-center justify-center h-full">Error loading image</p>';
+                                    imageContainer.classList.add('bg-destructive/10');
                                   }
-                                  if (!message.imageError) {
-                                    toast({
-                                      variant: "destructive",
-                                      title: "Image Load Error",
-                                      description: "The generated image could not be displayed."
-                                    });
+                                  if (!message.imageError) { // Prevent multiple toasts for same error
+                                    toast({ variant: "destructive", title: "Image Load Error", description: "The image could not be displayed."});
                                     setDialogs(prevDialogs => {
                                       const updatedMsgs = (prevDialogs[activeDialogId!] || []).map(msg =>
                                         msg.id === message.id ? { ...msg, imageError: true, imageUrl: undefined } : msg
@@ -453,11 +414,13 @@ export function ChatInterface() {
                                     });
                                   }
                                 }}
-                                data-ai-hint="generated art"
+                                data-ai-hint={message.sender === "user" ? "user content" : "generated art"}
                               />
                           </div>
                         )}
-                        {(message.text || (!message.text && message.sender === 'bot' && message.imageError)) && <p className="whitespace-pre-wrap">{message.text || (message.imageError ? "Image could not be displayed." : "")}</p>}
+                        {(message.text || (!message.text && message.sender === 'bot' && message.imageError) || (!message.text && message.sender === 'user' && message.imageError)) && 
+                          <p className="whitespace-pre-wrap">{message.text || (message.imageError ? (message.sender === 'user' ? "Image could not be displayed." : "AI response image could not be displayed.") : "")}</p>
+                        }
                       </>
                     )}
                   </div>
@@ -480,24 +443,24 @@ export function ChatInterface() {
               type="button"
               variant="outline"
               size="icon"
-              onClick={() => setIsImageDialogOpgen(true)}
-              disabled={isLoading || isGeneratingDialogImage}
+              onClick={() => setIsUploadImageDialogOpen(true)}
+              disabled={isLoading || isProcessingUpload}
               className="border-input hover:bg-accent/10"
-              aria-label="Generate Image"
+              aria-label="Upload Image"
             >
-              <Icons.ImagePlus className="w-5 h-5 text-accent" />
+              <Icons.Paperclip className="w-5 h-5 text-accent" />
             </Button>
             <Textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
+              value={currentInputText}
+              onChange={(e) => setCurrentInputText(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask Moonlight for information..."
               className="flex-1 resize-none min-h-[40px] max-h-[120px] bg-input border-border focus-visible:ring-accent"
-              disabled={isLoading || isGeneratingDialogImage}
+              disabled={isLoading || isProcessingUpload}
               rows={1}
             />
-            <Button type="submit" disabled={isLoading || isGeneratingDialogImage || !input.trim()} size="icon" className="bg-accent hover:bg-accent/90">
-              {(isLoading || isGeneratingDialogImage) ? (
+            <Button type="submit" disabled={isLoading || isProcessingUpload || !currentInputText.trim()} size="icon" className="bg-accent hover:bg-accent/90">
+              {(isLoading || isProcessingUpload) ? (
                 <Icons.Spinner className="w-5 h-5 animate-spin" />
               ) : (
                 <Icons.Send className="w-5 h-5" />
@@ -508,62 +471,68 @@ export function ChatInterface() {
         </CardFooter>
       </Card>
 
-      <Dialog open={isImageDialogOpgen} onOpenChange={setIsImageDialogOpgen}>
-        <DialogContent className="sm:max-w-[425px] bg-card border-border">
+      <Dialog open={isUploadImageDialogOpen} onOpenChange={setIsUploadImageDialogOpen}>
+        <DialogContent className="sm:max-w-[480px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-foreground">
-              <Icons.Image className="w-6 h-6 text-accent"/>
-              Generate Image with AI
+              <Icons.Paperclip className="w-6 h-6 text-accent"/>
+              Upload Image to Chat
             </DialogTitle>
             <DialogDescription>
-              Describe the image you want Moonlight to create. You can also enhance your prompt for more detailed results.
+              Select an image file and add an optional message to send to Moonlight.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="image-prompt-dialog" className="text-right text-muted-foreground">
-                Prompt
+              <Label htmlFor="image-upload-input-dialog" className="text-right text-muted-foreground">
+                Image
               </Label>
               <UIDialogInput
-                id="image-prompt-dialog"
-                value={imageDialogPrompt}
-                onChange={(e) => setImageDialogPrompt(e.target.value)}
-                className="col-span-3 bg-input border-input focus:ring-accent"
-                placeholder="e.g., A cat wearing a wizard hat"
-                disabled={isGeneratingDialogImage}
+                id="image-upload-input-dialog"
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={(e) => setImageToUpload(e.target.files ? e.target.files[0] : null)}
+                className="col-span-3 bg-input border-input file:text-foreground file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-accent file:text-accent-foreground hover:file:bg-accent/90"
+                disabled={isProcessingUpload}
               />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="enhance-prompt-dialog" className="text-right text-muted-foreground">
-                Enhance
-              </Label>
-              <div className="col-span-3 flex items-center space-x-2">
-                <Switch
-                  id="enhance-prompt-dialog"
-                  checked={enhanceDialogPrompt}
-                  onCheckedChange={setEnhanceDialogPrompt}
-                  disabled={isGeneratingDialogImage}
-                />
-                <Label htmlFor="enhance-prompt-dialog" className="text-sm text-muted-foreground">More detailed prompt</Label>
+            {imageToUpload && (
+              <div className="col-span-4 flex justify-center">
+                <Image src={URL.createObjectURL(imageToUpload)} alt="Preview" width={100} height={100} className="rounded-md border max-h-32 object-contain"/>
               </div>
+            )}
+            <div className="grid grid-cols-4 items-start gap-4">
+              <Label htmlFor="upload-accompanying-text" className="text-right text-muted-foreground pt-2">
+                Message
+              </Label>
+              <Textarea
+                id="upload-accompanying-text"
+                value={uploadAccompanyingText}
+                onChange={(e) => setUploadAccompanyingText(e.target.value)}
+                placeholder="Optional: Add a message about the image..."
+                className="col-span-3 bg-input border-input min-h-[60px]"
+                rows={2}
+                disabled={isProcessingUpload}
+              />
             </div>
           </div>
           <DialogFooter>
             <DialogClose asChild>
-              <Button variant="outline" disabled={isGeneratingDialogImage}>Cancel</Button>
+              <Button variant="outline" disabled={isProcessingUpload} onClick={() => {setImageToUpload(null); setUploadAccompanyingText(""); if(fileInputRef.current) fileInputRef.current.value = "";}}>Cancel</Button>
             </DialogClose>
             <Button
               type="button"
-              onClick={handleGenerateImageFromDialog}
-              disabled={!imageDialogPrompt.trim() || isGeneratingDialogImage}
+              onClick={handleSendUploadedImage}
+              disabled={!imageToUpload || isProcessingUpload}
               className="bg-accent hover:bg-accent/90"
             >
-              {isGeneratingDialogImage ? (
+              {isProcessingUpload ? (
                 <Icons.Spinner className="mr-2 h-4 w-4 animate-spin" />
               ) : (
-                <Icons.Brain className="mr-2 h-4 w-4" />
+                <Icons.Send className="mr-2 h-4 w-4" />
               )}
-              Generate
+              Send with Image
             </Button>
           </DialogFooter>
         </DialogContent>

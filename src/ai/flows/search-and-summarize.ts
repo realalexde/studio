@@ -2,25 +2,31 @@
 'use server';
 /**
  * @fileOverview This file defines a Genkit flow for searching external sources (simulated),
- * generating images, and summarizing results, considering conversation history.
+ * generating images, and summarizing results, considering conversation history and user-uploaded images.
  *
- * - searchAndSummarize - A function that takes a query and history, returns a summarized response which may include text and/or an image.
+ * - searchAndSummarize - A function that takes a query (text or image+text) and history, returns a summarized response.
  * - SearchAndSummarizeInput - The input type for the searchAndSummarize function.
  * - SearchAndSummarizeOutput - The output type for the searchAndSummarize function.
  */
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
-import Image from 'next/image'; // Not used here, but often in UI
 
 const ChatMessageSchema = z.object({
   sender: z.enum(["user", "bot"]),
   text: z.string(),
+  imageUrl: z.string().optional().describe('A data URI of an image sent in the chat message, if any.'),
 });
 export type AiChatMessage = z.infer<typeof ChatMessageSchema>;
 
 const SearchAndSummarizeInputSchema = z.object({
-  query: z.string().describe('The current search query or image generation request from the user.'),
+  query: z.union([
+    z.string().describe('A standard text query from the user.'),
+    z.object({
+      text: z.string().optional().describe('Optional text accompanying the image.'),
+      imageUrl: z.string().describe("A data URI of an image uploaded by the user for the current query. Expected format: 'data:<mimetype>;base64,<encoded_data>'."),
+    }).describe('An image query from the user, with optional accompanying text.')
+  ]).describe('The current query from the user, which can be text or an image with optional text.'),
   history: z.array(ChatMessageSchema).optional().describe('The conversation history to provide context. The last message in history is the current query by the user if not empty.'),
 });
 export type SearchAndSummarizeInput = z.infer<typeof SearchAndSummarizeInputSchema>;
@@ -73,9 +79,9 @@ const internetSearchTool = ai.defineTool(
 const generateImageTool = ai.defineTool(
   {
     name: 'generateImageTool',
-    description: 'Generates an image based on a textual prompt. You MUST use this tool when the user explicitly asks to create/draw/generate an image, OR when an image would visually enhance a textual answer about a suitable subject, OR as part of a combined request for information and an image. If this tool is used successfully, your final JSON output MUST include the \'imageUrl\' field.',
+    description: "Generates a NEW image based on a textual prompt. You MUST use this tool when the user explicitly asks to create/draw/generate a NEW image, OR when a NEW image would visually enhance a textual answer about a suitable subject (and the user has NOT uploaded their own image for the current turn). If this tool is used successfully, your final JSON output MUST include the 'imageUrl' field. DO NOT use this tool if the user has uploaded their own image in the current turn and is asking about that uploaded image, unless they specifically ask you to *modify* or *generate a new version* of their image.",
     inputSchema: z.object({
-      imagePrompt: z.string().describe('A detailed description of the image to be generated.'),
+      imagePrompt: z.string().describe('A detailed description of the NEW image to be generated.'),
     }),
     outputSchema: z.object({
       imageUrl: z.string().describe('The data URI of the generated image.'),
@@ -85,7 +91,7 @@ const generateImageTool = ai.defineTool(
     console.log(`Generating image with prompt: ${input.imagePrompt}`);
     const imageResult = await ai.generate({
       prompt: input.imagePrompt,
-      model: 'googleai/gemini-2.0-flash-exp', // Must use a model capable of image generation
+      model: 'googleai/gemini-2.0-flash-exp',
       config: {
         responseModalities: ['TEXT', 'IMAGE'],
         safetySettings: [
@@ -100,88 +106,91 @@ const generateImageTool = ai.defineTool(
     if (!imageResult.media?.url) {
       throw new Error('Image generation failed: Model did not return an image URL.');
     }
-
     
     const MIN_IMAGE_DATA_URL_LENGTH = 500; 
     if (imageResult.media.url.startsWith('data:image/') && imageResult.media.url.length < MIN_IMAGE_DATA_URL_LENGTH) {
         console.warn(`Image generation returned a very small image (length: ${imageResult.media.url.length}). Treating as failure. Prompt: ${input.imagePrompt}`);
         throw new Error('Image generation failed: Model returned a minimal or placeholder image.');
     }
-
     return { imageUrl: imageResult.media.url };
   }
 );
-
 
 const searchAndSummarizePrompt = ai.definePrompt({
   name: 'searchAndSummarizePrompt',
   input: {schema: SearchAndSummarizeInputSchema},
   output: {schema: SearchAndSummarizeOutputSchema},
   tools: [internetSearchTool, generateImageTool],
-  prompt: `You are Moonlight, an AI assistant. When asked who you are, you should identify yourself as such.
+  prompt: (input) => {
+    const historyMessages = (input.history || [])
+      .map(h => `${h.sender}: ${h.text || ''}${h.imageUrl ? ' (User sent an image attachment)' : ''}`)
+      .join('\n') || 'No conversation history provided.';
+
+    let latestQuerySection = "User's LATEST Question/Request: ";
+    if (typeof input.query === 'string') {
+      latestQuerySection += `"${input.query}"`;
+    } else { // query is an object with imageUrl and optional text
+      if (input.query.text) {
+        latestQuerySection += `"${input.query.text}" `;
+      }
+      latestQuerySection += `{{media url=query.imageUrl}} (User uploaded this image)`;
+    }
+
+    return `You are Moonlight, an AI assistant. When asked who you are, you should identify yourself as such.
 
 **Language Matching:**
-You MUST detect the language of the User's LATEST Question/Request ("{{{query}}}").
-Your entire response, including the 'summary' field and any conversational text (greetings, explanations, image captions, error messages), MUST be in the *same language* as that LATEST Question/Request.
-If the LATEST Question/Request is in Russian, your entire response must be in Russian. If it's in English, your response must be in English, and so on.
-This applies to both simple greetings and complex queries.
-
-Consider the full conversation history for context.
+You MUST detect the language of the User's LATEST Question/Request (text part if available, or infer from context if only image).
+Your entire response, including the 'summary' field and any conversational text, MUST be in the *same language* as that LATEST Question/Request.
 
 Conversation History (if any, most recent messages last):
-{{#if history}}
-{{#each history}}
-{{this.sender}}: {{this.text}}
-{{/each}}
-{{else}}
-No conversation history provided.
-{{/if}}
+${historyMessages}
 
-User's LATEST Question/Request: "{{{query}}}"
+${latestQuerySection}
 
-**Special Handling for Greetings/Pleasantries:**
-If the user's LATEST Question/Request ("{{{query}}}") is primarily a simple greeting (e.g., "hello", "hi", "привет", "hola", "good morning"), a polite closing (e.g., "thank you", "bye", "good night"), or a similar conversational pleasantry:
-  - Respond naturally, friendly, and in character as Moonlight, *in the detected language*. Acknowledge the greeting or pleasantry. You can ask how you can help if appropriate.
+**Instructions for handling user input (LATEST Question/Request):**
+
+1.  **Analyze User's LATEST Question/Request & History**:
+    *   The LATEST Question/Request might be pure text (\`query\` is a string), OR it might include an image uploaded by the user (if \`query.imageUrl\` is present), accompanied by optional text (\`query.text\`).
+    *   If an image was uploaded by the user as part of the LATEST Question/Request, it is the primary focus or context. Analyze it along with any accompanying text (\`query.text\`). Your task might be to describe the image, answer questions about it, or use it as context for other requests.
+    *   If the LATEST Question/Request is text-only, determine the user's primary intent: asking for textual information, asking you to generate/draw/create a NEW image, or a combination.
+    *   If the latest query part (text or image context) is short or ambiguous, use the conversation history.
+
+2.  **If the user's LATEST Question/Request includes an UPLOADED IMAGE (i.e., \`query.imageUrl\` is present):**
+    *   Your main task is to respond to the user's uploaded image and any accompanying text (\`query.text\`). This could involve describing the image, answering questions about it, etc.
+    *   You MAY use the 'internetSearch' tool if external information is needed to understand or discuss the uploaded image.
+    *   You generally should NOT use the 'generateImageTool' in this case to create a new image, unless the user explicitly asks you to *modify* their uploaded image or generate a *new separate* image based on it or in addition to it. If they ask for a new image to be generated, use generateImageTool.
+    *   Your 'summary' field in the output MUST contain your textual response related to the uploaded image and user's text, in the detected language.
+    *   The 'imageUrl' field in your output JSON should generally be OMITTED, unless you were specifically asked to generate a *new* image using 'generateImageTool'.
+
+3.  **If the user's LATEST Question/Request is TEXT-ONLY (i.e., \`query\` is a string) and asks to GENERATE A NEW IMAGE (either solely or as part of a combined request):**
+    *   You **MUST use the 'generateImageTool'** for any part of the request that asks to create, draw, or generate a new image. Provide a clear and descriptive 'imagePrompt' to the tool based on the user's request for the image.
+    *   If the 'generateImageTool' is called and is successful, your JSON output **MUST include the 'imageUrl' field** with the data URI from the tool.
+    *   If the request was *only* for an image, your 'summary' field in the output **MUST be a short, relevant caption for the image** (e.g., "Here is your image of a cat." or "Вот ваше изображение кота."), *in the detected language*. **DO NOT simply state that you will create an image.**
+    *   If the request was *combined* with an informational query, your 'summary' field should contain the textual answer to the informational part. The 'imageUrl' should correspond to the image part.
+
+4.  **If the user's LATEST Question/Request is TEXT-ONLY and asks for INFORMATION or a SUMMARY (and there's NO explicit image generation request in the LATEST query, AND no user-uploaded image for this turn):**
+    *   Determine if the question requires information that is likely outside your general knowledge, needs to be up-to-date, or if the user explicitly asks for a search.
+    *   If you decide external information is needed, use the 'internetSearch' tool.
+    *   Formulate your textual 'summary' based on your general knowledge or the search results, *in the detected language*.
+    *   **Supplemental Image Consideration**: After formulating the textual summary, critically assess if a visually illustrative NEW image would significantly enhance understanding. If so, and the topic is suitable, you **MUST use the 'generateImageTool'**.
+    *   If a NEW image is generated, your JSON output **MUST include its 'imageUrl'**. Otherwise, omit 'imageUrl'.
+    *   **JSON Formatting for 'summary'**: Default to plain text. ONLY if the user's LATEST question *explicitly* asks for JSON output, then the 'summary' field must be a valid JSON string.
+
+**Special Handling for Greetings/Pleasantries (applies if LATEST Question/Request is simple text and no image upload):**
+  - Respond naturally, friendly, and in character as Moonlight, *in the detected language*.
   - Your 'summary' field in the output MUST contain this conversational response.
   - The 'imageUrl' field in the output MUST be OMITTED.
-  - You do NOT need to follow the detailed "Analyze / Use Tool" steps below for these simple conversational turns. Your response should be a single JSON object: \`{ "summary": "Your conversational reply here, in the detected language." }\`.
+  - You do NOT need to follow the detailed "Analyze / Use Tool" steps above.
 
-**For all other types of LATEST Questions/Requests (information, image generation, etc.):**
-  Your primary goal is to comprehensively and directly answer the user's LATEST question or fulfill their image generation request, *in the detected language*.
-  Follow these steps precisely:
+**Final Output Structure (applies to all request types except simple greetings):**
+    *   Your response MUST be a single JSON object.
+    *   This JSON object MUST have a key named "summary" with a non-empty string value (in the detected language).
+    *   If a NEW image was generated using 'generateImageTool' (either explicitly requested or as a supplement), the JSON object MUST also have a key named "imageUrl" with the image data URI. If no NEW image was generated, this key MUST be OMITTED.
+    *   If you cannot provide a meaningful answer, 'summary' should reflect this politely.
+    *   DO NOT return null, malformed JSON, or empty "summary".
 
-  1.  **Analyze User's LATEST Question/Request & History**:
-      *   Determine the user's primary intent: Is it *primarily* asking for textual information, *primarily* asking you to generate/draw/create an image, or a *combination* of both (e.g., "Tell me about X and show me a picture of Y")?
-      *   If the latest query is short or ambiguous (e.g., "what about that?"), use the conversation history to determine the actual topic of interest or intent.
-
-  2.  **If the user is asking to GENERATE AN IMAGE (either solely or as part of a combined request):**
-      *   You **MUST use the 'generateImageTool'** for any part of the request that asks to create, draw, or generate an image. Provide a clear and descriptive 'imagePrompt' to the tool based on the user's request for the image.
-      *   If the 'generateImageTool' is called and is successful, your JSON output **MUST include the 'imageUrl' field** with the data URI from the tool.
-      *   If the request was *only* for an image, your 'summary' field in the output **MUST be a short, relevant caption for the image** (e.g., "Here is your image of a cat." or "Вот ваше изображение кота."), *in the detected language*. **DO NOT simply state that you will create an image (e.g., do not say "Okay, I will make an image." as the summary).**
-      *   If the request was *combined* with an informational query (e.g., "Tell me about X and show me a picture of Y"), your 'summary' field should contain the textual answer to the informational part ("Tell me about X"), *in the detected language*. The 'imageUrl' should correspond to the image part of the request ("picture of Y").
-      *   If the request involved an informational part and also asked for an image, you may use the 'internetSearch' tool if needed for the informational part *before* calling 'generateImageTool' and formulating the summary.
-
-  3.  **If the user is asking for INFORMATION or a SUMMARY (and there's NO explicit image request in the LATEST query):**
-      *   Determine if the question requires information that is likely outside your general knowledge, needs to be up-to-date, or if the user explicitly asks for a search.
-      *   If you decide external information is needed, use the 'internetSearch' tool. Provide a clear and specific 'searchQuery' to the tool.
-      *   Formulate your textual 'summary' based on your general knowledge or the search results, *in the detected language*. This 'summary' is the primary answer to the user's query.
-      *   **Supplemental Image Consideration**: After formulating the textual summary, critically assess if a visually illustrative image would significantly enhance the user's understanding or engagement with the topic. The image should be directly relevant to the main subject of the textual summary.
-          *   If you decide an image is appropriate AND the topic is suitable for image generation (e.g., concrete objects, scenes, concepts that can be visualized), you **MUST use the 'generateImageTool'**. The 'imagePrompt' for this tool should be a concise description of an image that would best complement your textual summary.
-          *   If an image is generated by the 'generateImageTool', your JSON output **MUST include its 'imageUrl'** in your response.
-          *   If you decide a supplemental image is not appropriate or it cannot be generated, omit the 'imageUrl' field.
-      *   **JSON Formatting for 'summary'**: By default, 'summary' is plain text. ONLY if the user's LATEST question *explicitly* asks for the output "in JSON format", "as JSON", or "output JSON", then the *entire string content* of the 'summary' field must be a valid JSON string. Otherwise, it MUST be plain text.
-
-  4.  **Final Output Structure (applies to information/image requests from steps 2 & 3 only):**
-      *   Your response MUST be a single JSON object.
-      *   This JSON object MUST have a key named "summary" with a non-empty string value (in the detected language).
-      *   If an image was generated (either explicitly requested or as a supplement), the JSON object MUST also have a key named "imageUrl" with the image data URI as a string value. If no image was generated (either because it wasn't requested, wasn't appropriate, or the tool failed), this key MUST be OMITTED from the JSON object.
-      *   Example structure if no image: \`{ "summary": "Your textual answer here, in the detected language." }\`
-      *   Example structure with an image: \`{ "summary": "Your image caption or full answer here, in the detected language.", "imageUrl": "data:image/png;base64,..." }\`
-      *   If, after considering all information and tool outputs (or tool failures), you cannot provide a meaningful answer or perform the requested action due to ambiguity or limitations, your "summary" field should reflect this politely, *in the detected language* (e.g., "I need more information for that request."). You MUST still return this polite message within the valid JSON structure described above (e.g., \`{ "summary": "I'm sorry, I cannot fulfill that request, in the detected language." }\`).
-      *   DO NOT return null for the entire output. DO NOT return a malformed JSON. DO NOT return an empty string for the "summary" field.
-
-User's LATEST Question/Request: {{{query}}}
-Assistant's Response (Remember to structure as a valid JSON object with a "summary" string (in the detected language), and optionally "imageUrl" string, following all rules above):`,
+Assistant's Response (Remember to structure as a valid JSON object with a "summary" string (in the detected language), and optionally "imageUrl" string, following all rules above):`;
+  }
 });
 
 const searchAndSummarizeFlow = ai.defineFlow(
@@ -192,14 +201,13 @@ const searchAndSummarizeFlow = ai.defineFlow(
   },
   async (input: SearchAndSummarizeInput): Promise<SearchAndSummarizeOutput> => {
     try {
-      const promptResponse = await searchAndSummarizePrompt({ query: input.query, history: input.history });
+      const promptResponse = await searchAndSummarizePrompt(input);
 
       if (promptResponse && promptResponse.output && typeof promptResponse.output.summary === 'string') {
         if (promptResponse.output.summary.trim() === "") {
             console.warn("SearchAndSummarizeFlow: Prompt returned an empty summary. Falling back to default.");
             return { summary: "I received an empty response from the AI. Could you try rephrasing your question?" };
         }
-        // Ensure imageUrl is either a string or undefined, not null, to match schema expectations if model returns null
         return {
           summary: promptResponse.output.summary,
           imageUrl: promptResponse.output.imageUrl || undefined,
@@ -210,9 +218,7 @@ const searchAndSummarizeFlow = ai.defineFlow(
       }
     } catch (flowError) {
       console.error("SearchAndSummarizeFlow: Critical error during flow execution.", flowError);
-      // Ensure a valid SearchAndSummarizeOutput object is returned even in case of an unexpected error
       return { summary: "An unexpected error occurred while trying to get a response. Please try again or rephrase your request." };
     }
   }
 );
-

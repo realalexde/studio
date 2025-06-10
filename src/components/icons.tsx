@@ -15,8 +15,9 @@ import {
   Moon,
   X,
   ImagePlus,
-  PlusSquare, // Added PlusSquare icon
-  Trash2, // Added Trash2 icon
+  PlusSquare,
+  Trash2,
+  Paperclip, // Added Paperclip icon
   type LucideIcon,
 } from 'lucide-react';
 
@@ -38,7 +39,8 @@ export const Icons = {
   Moon: Moon,
   Close: X,
   ImagePlus: ImagePlus,
-  PlusSquare: PlusSquare, // Export PlusSquare
-  Trash2: Trash2, // Export Trash2
+  PlusSquare: PlusSquare,
+  Trash2: Trash2,
+  Paperclip: Paperclip, // Export Paperclip
 };
 
