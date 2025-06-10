@@ -22,9 +22,10 @@ interface Message {
   avatar?: string;
   isLoading?: boolean;
   imageUrl?: string;
+  imageError?: boolean; // Flag to track if an image error has been reported
 }
 
-const CHAT_HISTORY_LOCAL_STORAGE_KEY = "chatHistory_v2"; // Changed key to avoid conflicts with old cookie format
+const CHAT_HISTORY_LOCAL_STORAGE_KEY = "chatHistory_v2";
 
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -47,9 +48,10 @@ export function ChatInterface() {
           setMessages(
             loadedMessages.filter(msg =>
               typeof msg.id === 'string' &&
-              (typeof msg.text === 'string' || typeof msg.imageUrl === 'string') && // Allow messages with only image
+              (typeof msg.text === 'string' || typeof msg.imageUrl === 'string') &&
               (msg.sender === 'user' || msg.sender === 'bot') &&
-              !msg.isLoading // Don't load messages that were in a loading state
+              !msg.isLoading && // Don't load messages that were in a loading state
+              !msg.imageError // Don't try to reload images that previously errored
             )
           );
         }
@@ -76,21 +78,20 @@ export function ChatInterface() {
     }
 
     try {
-      // Only save if there are messages and none are in a loading state
       if (messages.length > 0 && !messages.some(msg => msg.isLoading)) {
-         // Filter out isLoading before saving
-        const messagesToSave = messages.map(({ isLoading, ...rest }) => rest);
+        const messagesToSave = messages.map(({ isLoading, imageError, ...rest }) => {
+          // If imageError is true, ensure imageUrl is not saved to prevent reload attempts on corrupted URLs
+          return imageError ? { ...rest, imageUrl: undefined } : rest;
+        });
         const messagesJson = JSON.stringify(messagesToSave);
         localStorage.setItem(CHAT_HISTORY_LOCAL_STORAGE_KEY, messagesJson);
       } else if (messages.length === 0 && initialLoadAttempted) {
-        // If messages are now empty and initial load is done, clear localStorage
         localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
       }
     } catch (error) {
       console.error("Failed to save chat history to localStorage:", error);
-      // Avoid toast spam if localStorage is truly unavailable
     }
-  }, [messages, initialLoadAttempted, toast]);
+  }, [messages, initialLoadAttempted]);
 
   const handleSendMessage = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -120,7 +121,7 @@ export function ChatInterface() {
 
     const historyForAI: AiChatMessage[] = [...messages, userMessage]
       .filter(msg => !msg.isLoading && (msg.text.trim() !== "" || msg.imageUrl))
-      .map(({ sender, text }) => ({ sender, text: text || "" })); // Ensure text is always a string for AI
+      .map(({ sender, text }) => ({ sender, text: text || "" }));
 
     try {
       const flowInput: SearchAndSummarizeInput = {
@@ -132,7 +133,7 @@ export function ChatInterface() {
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
           msg.id === botLoadingMessageId
-            ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false }
+            ? { ...msg, text: result.summary, imageUrl: result.imageUrl, isLoading: false, imageError: false }
             : msg
         )
       );
@@ -207,7 +208,7 @@ export function ChatInterface() {
                     message.sender === "user"
                       ? "bg-primary text-primary-foreground rounded-br-none p-3"
                       : "bg-secondary text-secondary-foreground rounded-bl-none"
-                  } ${message.imageUrl ? "p-2" : "p-3"}`}
+                  } ${message.imageUrl && !message.imageError ? "p-2" : "p-3"}`}
                 >
                   {message.isLoading ? (
                     <div className="flex items-center space-x-2 p-3">
@@ -216,7 +217,7 @@ export function ChatInterface() {
                     </div>
                   ) : (
                     <>
-                      {message.imageUrl && (
+                      {message.imageUrl && !message.imageError && (
                         <div className="mb-2 rounded-md overflow-hidden border border-border">
                            <Skeleton className="w-full aspect-square rounded-md bg-muted/50">
                             <Image
@@ -233,16 +234,18 @@ export function ChatInterface() {
                               }}
                               onError={(e) => {
                                 console.error("Failed to load image:", e.currentTarget.src);
-                                toast({
-                                  variant: "destructive",
-                                  title: "Image Load Error",
-                                  description: "The generated image could not be displayed."
-                                });
-                                // Make skeleton static and indicate error or hide
+                                if (!message.imageError) {
+                                  toast({
+                                    variant: "destructive",
+                                    title: "Image Load Error",
+                                    description: "The generated image could not be displayed."
+                                  });
+                                  setMessages(prevMessages => prevMessages.map(msg =>
+                                    msg.id === message.id ? { ...msg, imageError: true, imageUrl: undefined } : msg
+                                  ));
+                                }
                                 if (e.currentTarget.parentElement) {
                                     e.currentTarget.parentElement.classList.remove('animate-pulse');
-                                    // Optionally change background to indicate error
-                                    // e.currentTarget.parentElement.classList.add('!bg-destructive/20');
                                 }
                               }}
                               data-ai-hint="generated art"
@@ -250,8 +253,7 @@ export function ChatInterface() {
                           </Skeleton>
                         </div>
                       )}
-                      {/* Ensure text is always rendered, even if empty string, to maintain structure */}
-                      {(message.text || (!message.text && !message.imageUrl)) && <p className="whitespace-pre-wrap">{message.text}</p>}
+                      {(message.text || (!message.text && !message.imageUrl && !message.imageError)) && <p className="whitespace-pre-wrap">{message.text}</p>}
                     </>
                   )}
                 </div>
