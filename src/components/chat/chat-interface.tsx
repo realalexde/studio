@@ -23,7 +23,6 @@ import {
   DialogTitle,
   DialogClose,
 } from "@/components/ui/dialog";
-// Removed UIDialogInput as it's not directly used for the file input anymore.
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
@@ -124,7 +123,11 @@ export function ChatInterface() {
       });
 
       localStorage.setItem(CHAT_DIALOGS_STORAGE_KEY, JSON.stringify(dialogsToSave));
-      localStorage.setItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY, activeDialogId);
+      if (activeDialogId) {
+        localStorage.setItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY, activeDialogId);
+      } else {
+        localStorage.removeItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY);
+      }
     } catch (error) {
       console.error("Failed to save chat history to localStorage:", error);
     }
@@ -175,7 +178,7 @@ export function ChatInterface() {
     if (activeDialogId === dialogIdToDelete) {
       const remainingDialogIds = Object.keys(updatedDialogs);
       setActiveDialogId(remainingDialogIds[0] || null);
-      if(remainingDialogIds.length === 0) { handleAddDialog(); }
+      if(remainingDialogIds.length === 0) { handleAddDialog(); } // Should not happen due to guard above
     }
   };
 
@@ -336,171 +339,177 @@ export function ChatInterface() {
 
   return (
     <>
-      <Card className="w-full h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)] flex flex-col shadow-2xl bg-card/80 backdrop-blur-sm">
-        <CardHeader className="border-b border-border">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-             <CardTitle className="font-headline text-2xl text-foreground flex items-center gap-2">
-               <Icons.Chat className="w-7 h-7 text-accent" />
-               Chat
-               {modelDisplayName && <span className="text-sm font-normal text-muted-foreground ml-1">({modelDisplayName})</span>}
-             </CardTitle>
-             <div className="flex items-center gap-2">
-                <Button variant="outline" size="sm" onClick={handleAddDialog} className="border-input hover:bg-accent/10">
-                  <Icons.PlusSquare className="w-4 h-4 mr-2" /> New Chat
-                </Button>
-                {Object.keys(dialogs).length > 1 && (
-                  <Button variant="outline" size="sm" onClick={() => handleDeleteDialog(activeDialogId!)} className="border-destructive/50 text-destructive hover:bg-destructive/10">
-                    <Icons.Trash2 className="w-4 h-4 mr-2" /> Delete Chat
-                  </Button>
-                )}
-             </div>
-          </div>
-          
-          <Tabs value={activeDialogId} onValueChange={setActiveDialogId} className="mt-2">
-            <TabsList className="w-full justify-start overflow-x-auto">
-              {Object.keys(dialogs).map((dialogId) => (
-                <TabsTrigger key={dialogId} value={dialogId} className="capitalize text-xs sm:text-sm">
-                  {dialogId.replace(/-/g, ' ')}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
-
-           {(isLoading || isProcessingUpload) && (
-            <Alert className="border-accent text-sm mt-2">
-              <Icons.Search className="h-5 w-5 text-accent" />
-              <AlertTitle className="text-accent font-semibold">Moonlight is Thinking...</AlertTitle>
-              <AlertDescription className="text-muted-foreground">
-                The AI may be processing your text or image. This might take a moment.
-              </AlertDescription>
-            </Alert>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+        <CardTitle className="font-headline text-2xl text-foreground flex items-center gap-2 shrink-0">
+          <Icons.Chat className="w-7 h-7 text-accent" />
+          Chat
+          {modelDisplayName && <span className="text-sm font-normal text-muted-foreground ml-1">({modelDisplayName})</span>}
+        </CardTitle>
+        <div className="flex items-center gap-2 self-start sm:self-center">
+          <Button variant="outline" size="sm" onClick={handleAddDialog} className="border-input hover:bg-accent/10">
+            <Icons.PlusSquare className="w-4 h-4 mr-2" /> New Chat
+          </Button>
+          {Object.keys(dialogs).length > 1 && (
+            <Button variant="outline" size="sm" onClick={() => handleDeleteDialog(activeDialogId!)} className="border-destructive/50 text-destructive hover:bg-destructive/10">
+              <Icons.Trash2 className="w-4 h-4 mr-2" /> Delete Chat
+            </Button>
           )}
-        </CardHeader>
+        </div>
+      </div>
+          
+      <Tabs value={activeDialogId} onValueChange={setActiveDialogId} className="w-full flex flex-col flex-1">
+        <TabsList className="w-full justify-start overflow-x-auto mb-4 shrink-0">
+          {Object.keys(dialogs).map((dialogId) => (
+            <TabsTrigger key={dialogId} value={dialogId} className="capitalize text-xs sm:text-sm">
+              {dialogId.replace(/-/g, ' ')}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-        <CardContent className="flex-1 p-0 overflow-hidden">
-          <ScrollArea ref={scrollAreaRef} className="h-full p-4 md:p-6">
-            <div className="space-y-6">
-              {currentMessages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`flex items-end gap-3 ${
-                    message.sender === "user" ? "justify-end" : ""
-                  }`}
-                >
-                  {message.sender === "bot" && (
-                    <Avatar className="w-8 h-8 border border-accent self-start">
-                      <AvatarImage src={message.avatar} />
-                      <AvatarFallback>
-                        <Icons.Moon className="w-5 h-5 text-accent" />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
+        <Card className="w-full flex-1 flex flex-col shadow-2xl bg-card/80 backdrop-blur-sm overflow-hidden">
+          <CardHeader className="border-b border-border shrink-0">
+            {(isLoading || isProcessingUpload) && (
+              <Alert className="border-accent text-sm">
+                <Icons.Search className="h-5 w-5 text-accent" />
+                <AlertTitle className="text-accent font-semibold">Moonlight is Thinking...</AlertTitle>
+                <AlertDescription className="text-muted-foreground">
+                  The AI may be processing your text or image. This might take a moment.
+                </AlertDescription>
+              </Alert>
+            )}
+          </CardHeader>
+
+          <CardContent className="flex-1 p-0 overflow-hidden">
+            <ScrollArea ref={scrollAreaRef} className="h-full p-4 md:p-6">
+              <div className="space-y-6">
+                {currentMessages.map((message) => (
                   <div
-                    className={`max-w-[70%] rounded-xl shadow ${
-                      message.sender === "user"
-                        ? "bg-primary text-primary-foreground rounded-br-none" 
-                        : "bg-secondary text-secondary-foreground rounded-bl-none"
-                    } ${message.imageUrl && !message.imageError ? "p-2" : "p-3"}`}
+                    key={message.id}
+                    className={`flex items-end gap-3 ${
+                      message.sender === "user" ? "justify-end" : ""
+                    }`}
                   >
-                    {message.isLoading ? (
-                      <div className="flex items-center space-x-2 p-3">
-                        <Icons.Spinner className="w-4 h-4 animate-spin" />
-                        <span>Thinking...</span>
-                      </div>
-                    ) : (
-                      <>
-                        {message.imageUrl && !message.imageError && (
-                           <div className="mb-2 rounded-md overflow-hidden border border-border relative bg-muted/50" style={{aspectRatio: '1/1', width: '300px', maxWidth: '100%'}}>
-                            <Skeleton className="absolute inset-0 w-full h-full rounded-md bg-muted/50 z-0" />
-                            <Image
-                                src={message.imageUrl}
-                                alt={message.text || (message.sender === "user" ? "Uploaded image" : "Generated AI Image")}
-                                layout="fill"
-                                objectFit="contain"
-                                className="relative z-10"
-                                onLoadingComplete={(img) => {
-                                  const skeletonElement = img.parentElement?.querySelector('.absolute.inset-0.w-full.h-full.rounded-md.bg-muted\\/50.z-0') as HTMLElement | null;
-                                  if (skeletonElement) {
-                                    skeletonElement.style.display = 'none';
-                                  }
-                                }}
-                                onError={(e) => {
-                                  console.error("Failed to load image:", (e.target as HTMLImageElement).src);
-                                  const skeletonElement = (e.target as HTMLImageElement).parentElement?.parentElement as HTMLElement | null;
-                                  if (skeletonElement) {
-                                      skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50');
-                                      skeletonElement.style.display = 'flex';
-                                      skeletonElement.style.alignItems = 'center';
-                                      skeletonElement.style.justifyContent = 'center';
-                                      skeletonElement.classList.add('bg-destructive/10');
-                                      skeletonElement.innerHTML = '<p class="text-xs text-destructive p-2 text-center">Error loading image</p>';
-                                  }
-                                  if (!message.imageError) { 
-                                    toast({ variant: "destructive", title: "Image Load Error", description: "The image could not be displayed."});
-                                    setDialogs(prevDialogs => {
-                                      const updatedMsgs = (prevDialogs[activeDialogId!] || []).map(msg =>
-                                        msg.id === message.id ? { ...msg, imageError: true, imageUrl: undefined } : msg
-                                      );
-                                      return {...prevDialogs, [activeDialogId!]: updatedMsgs};
-                                    });
-                                  }
-                                }}
-                                data-ai-hint={message.sender === "user" ? "user content" : "generated art"}
-                              />
-                          </div>
-                        )}
-                        {(message.text || (!message.text && message.sender === 'bot' && message.imageError) || (!message.text && message.sender === 'user' && message.imageError)) && 
-                          <p className="whitespace-pre-wrap">{message.text || (message.imageError ? (message.sender === 'user' ? "Image could not be displayed." : "AI response image could not be displayed.") : "")}</p>
-                        }
-                      </>
+                    {message.sender === "bot" && (
+                      <Avatar className="w-8 h-8 border border-accent self-start">
+                        <AvatarImage src={message.avatar} />
+                        <AvatarFallback>
+                          <Icons.Moon className="w-5 h-5 text-accent" />
+                        </AvatarFallback>
+                      </Avatar>
+                    )}
+                    <div
+                      className={`max-w-[70%] rounded-xl shadow ${
+                        message.sender === "user"
+                          ? "bg-primary text-primary-foreground rounded-br-none" 
+                          : "bg-secondary text-secondary-foreground rounded-bl-none"
+                      } ${message.imageUrl && !message.imageError ? "p-2" : "p-3"}`}
+                    >
+                      {message.isLoading ? (
+                        <div className="flex items-center space-x-2 p-3">
+                          <Icons.Spinner className="w-4 h-4 animate-spin" />
+                          <span>Thinking...</span>
+                        </div>
+                      ) : (
+                        <>
+                          {message.imageUrl && !message.imageError && (
+                            <div className="mb-2 rounded-md overflow-hidden border border-border relative bg-muted/50" style={{aspectRatio: '1/1', width: '300px', maxWidth: '100%'}}>
+                              <Skeleton className="absolute inset-0 w-full h-full rounded-md bg-muted/50 z-0" />
+                              <Image
+                                  src={message.imageUrl}
+                                  alt={message.text || (message.sender === "user" ? "Uploaded image" : "Generated AI Image")}
+                                  layout="fill"
+                                  objectFit="contain"
+                                  className="relative z-10"
+                                  onLoadingComplete={(img) => {
+                                    const skeletonElement = img.parentElement?.querySelector('.absolute.inset-0.w-full.h-full.rounded-md.bg-muted\\/50.z-0') as HTMLElement | null;
+                                    if (skeletonElement) {
+                                      skeletonElement.style.display = 'none';
+                                    }
+                                  }}
+                                  onError={(e) => {
+                                    console.error("Failed to load image:", (e.target as HTMLImageElement).src);
+                                    const skeletonContainer = (e.target as HTMLImageElement).parentElement;
+                                    if (skeletonContainer) {
+                                        const skeletonElement = skeletonContainer.querySelector('.absolute.inset-0.w-full.h-full.rounded-md.bg-muted\\/50.z-0') as HTMLElement | null;
+                                        if (skeletonElement) { // If skeleton is still there
+                                            skeletonElement.style.display = 'flex';
+                                            skeletonElement.style.alignItems = 'center';
+                                            skeletonElement.style.justifyContent = 'center';
+                                            skeletonElement.classList.remove('bg-muted/50');
+                                            skeletonElement.classList.add('bg-destructive/10');
+                                            skeletonElement.innerHTML = '<p class="text-xs text-destructive p-2 text-center">Error loading image</p>';
+                                        } else { // If skeleton was already hidden, style the container itself
+                                            skeletonContainer.classList.add('bg-destructive/10', 'flex', 'items-center', 'justify-center');
+                                            skeletonContainer.innerHTML = '<p class="text-xs text-destructive p-2 text-center">Error loading image</p>';
+                                        }
+                                    }
+                                    if (!message.imageError) { 
+                                      toast({ variant: "destructive", title: "Image Load Error", description: "The image could not be displayed."});
+                                      setDialogs(prevDialogs => {
+                                        const updatedMsgs = (prevDialogs[activeDialogId!] || []).map(msg =>
+                                          msg.id === message.id ? { ...msg, imageError: true, imageUrl: undefined } : msg
+                                        );
+                                        return {...prevDialogs, [activeDialogId!]: updatedMsgs};
+                                      });
+                                    }
+                                  }}
+                                  data-ai-hint={message.sender === "user" ? "user content" : "generated art"}
+                                />
+                            </div>
+                          )}
+                          {(message.text || (!message.text && message.sender === 'bot' && message.imageError) || (!message.text && message.sender === 'user' && message.imageError)) && 
+                            <p className="whitespace-pre-wrap">{message.text || (message.imageError ? (message.sender === 'user' ? "Image could not be displayed." : "AI response image could not be displayed.") : "")}</p>
+                          }
+                        </>
+                      )}
+                    </div>
+                    {message.sender === "user" && (
+                      <Avatar className="w-8 h-8 border border-primary self-start">
+                        <AvatarImage src={message.avatar} />
+                        <AvatarFallback>
+                          <Icons.User className="w-5 h-5 text-primary" />
+                        </AvatarFallback>
+                      </Avatar>
                     )}
                   </div>
-                  {message.sender === "user" && (
-                    <Avatar className="w-8 h-8 border border-primary self-start">
-                      <AvatarImage src={message.avatar} />
-                      <AvatarFallback>
-                        <Icons.User className="w-5 h-5 text-primary" />
-                      </AvatarFallback>
-                    </Avatar>
-                  )}
-                </div>
-              ))}
-            </div>
-          </ScrollArea>
-        </CardContent>
-        <CardFooter className="p-4 border-t border-border">
-          <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={() => setIsUploadImageDialogOpen(true)}
-              disabled={isLoading || isProcessingUpload}
-              className="border-input hover:bg-accent/10"
-              aria-label="Upload Image"
-            >
-              <Icons.Paperclip className="w-5 h-5 text-accent" />
-            </Button>
-            <Textarea
-              value={currentInputText}
-              onChange={(e) => setCurrentInputText(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Ask Moonlight for information..."
-              className="flex-1 resize-none min-h-[40px] max-h-[120px] bg-input border-border focus-visible:ring-accent"
-              disabled={isLoading || isProcessingUpload}
-              rows={1}
-            />
-            <Button type="submit" disabled={isLoading || isProcessingUpload || !currentInputText.trim()} size="icon" className="bg-accent hover:bg-accent/90">
-              {(isLoading || isProcessingUpload) ? (
-                <Icons.Spinner className="w-5 h-5 animate-spin" />
-              ) : (
-                <Icons.Send className="w-5 h-5" />
-              )}
-              <span className="sr-only">Send</span>
-            </Button>
-          </form>
-        </CardFooter>
-      </Card>
+                ))}
+              </div>
+            </ScrollArea>
+          </CardContent>
+          <CardFooter className="p-4 border-t border-border shrink-0">
+            <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => setIsUploadImageDialogOpen(true)}
+                disabled={isLoading || isProcessingUpload}
+                className="border-input hover:bg-accent/10"
+                aria-label="Upload Image"
+              >
+                <Icons.Paperclip className="w-5 h-5 text-accent" />
+              </Button>
+              <Textarea
+                value={currentInputText}
+                onChange={(e) => setCurrentInputText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask Moonlight for information..."
+                className="flex-1 resize-none min-h-[40px] max-h-[120px] bg-input border-border focus-visible:ring-accent"
+                disabled={isLoading || isProcessingUpload}
+                rows={1}
+              />
+              <Button type="submit" disabled={isLoading || isProcessingUpload || !currentInputText.trim()} size="icon" className="bg-accent hover:bg-accent/90">
+                {(isLoading || isProcessingUpload) ? (
+                  <Icons.Spinner className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Icons.Send className="w-5 h-5" />
+                )}
+                <span className="sr-only">Send</span>
+              </Button>
+            </form>
+          </CardFooter>
+        </Card>
+      </Tabs>
 
       <Dialog open={isUploadImageDialogOpen} onOpenChange={setIsUploadImageDialogOpen}>
         <DialogContent 
