@@ -28,19 +28,25 @@ export async function generateEnhancedResponse(input: GenerateEnhancedResponseIn
 const analyzeQueryPrompt = ai.definePrompt({
   name: 'analyzeQueryPrompt',
   input: {schema: GenerateEnhancedResponseInputSchema},
-  output: z.object({
-    analysis: z.string().describe('A detailed analysis of the user query, identifying key aspects and potential sub-queries needed for a comprehensive answer.'),
-  }),
+  output: {
+    schema: z.object({
+      analysis: z.string().describe('A detailed analysis of the user query, identifying key aspects and potential sub-queries needed for a comprehensive answer.'),
+    })
+  },
   prompt: `You are an AI assistant tasked with analyzing user queries to provide enhanced responses. Analyze the following query and identify the key aspects and potential sub-queries needed for a comprehensive answer.\n\nQuery: {{{query}}}`,
 });
 
 const synthesizeResponsePrompt = ai.definePrompt({
   name: 'synthesizeResponsePrompt',
-  input: z.object({
-    query: z.string().describe('The original user query.'),
-    analysis: z.string().describe('The detailed analysis of the user query.'),
-  }),
-  output: GenerateEnhancedResponseOutputSchema,
+  input: {
+    schema: z.object({
+      query: z.string().describe('The original user query.'),
+      analysis: z.string().describe('The detailed analysis of the user query.'),
+    })
+  },
+  output: {
+    schema: GenerateEnhancedResponseOutputSchema
+  },
   prompt: `You are an AI assistant tasked with generating enhanced responses to user queries. Based on the following analysis of the query, synthesize a comprehensive and thoughtful response.\n\nQuery: {{{query}}}\nAnalysis: {{{analysis}}}\n\nEnhanced Response:`, 
 });
 
