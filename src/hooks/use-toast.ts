@@ -1,3 +1,4 @@
+
 "use client"
 
 // Inspired by react-hot-toast library
@@ -142,6 +143,7 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">
 
+// This toast function is defined at the module level, its reference is stable.
 function toast({ ...props }: Toast) {
   const id = genId()
 
@@ -184,11 +186,20 @@ function useToast() {
     }
   }, [state])
 
-  return {
-    ...state,
-    toast,
-    dismiss: (toastId?: string) => dispatch({ type: "DISMISS_TOAST", toastId }),
-  }
+  const memoizedDismiss = React.useCallback((toastId?: string) => {
+    dispatch({ type: "DISMISS_TOAST", toastId });
+  }, []); // dispatch is stable
+
+  // Memoize the returned object to stabilize its reference if `state` hasn't changed.
+  // The `toast` function itself is module-scoped and already stable.
+  return React.useMemo(() => {
+    return {
+      ...state, // Includes the `toasts` array
+      toast,    // The stable, module-level `toast` function
+      dismiss: memoizedDismiss,
+    }
+  }, [state, memoizedDismiss]);
 }
 
 export { useToast, toast }
+
