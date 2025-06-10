@@ -22,7 +22,7 @@ interface Message {
   avatar?: string;
   isLoading?: boolean;
   imageUrl?: string;
-  imageError?: boolean; // Flag to track if an image error has been reported
+  imageError?: boolean; 
 }
 
 const CHAT_HISTORY_LOCAL_STORAGE_KEY = "chatHistory_v2_localStorage";
@@ -53,7 +53,7 @@ export function ChatInterface() {
             ).map(msg => ({ 
               ...msg,
               isLoading: false, 
-              imageUrl: msg.imageError ? undefined : msg.imageUrl,
+              imageUrl: msg.imageError ? undefined : msg.imageUrl, // Keep imageUrl undefined if it previously errored
             }))
           );
         }
@@ -82,26 +82,23 @@ export function ChatInterface() {
     try {
       if (messages.length > 0 && !messages.some(msg => msg.isLoading)) {
         const messagesToSave = messages.map(({ isLoading, ...rest }) => {
+          // Ensure that if imageError is true, imageUrl is saved as undefined
           return rest.imageError ? { ...rest, imageUrl: undefined } : rest;
         });
         const messagesJson = JSON.stringify(messagesToSave);
         localStorage.setItem(CHAT_HISTORY_LOCAL_STORAGE_KEY, messagesJson);
       } else if (messages.length === 0 && initialLoadAttempted) {
-        // Only clear if explicitly empty AFTER initial load and not if it's the initial state of an empty cookie
-        const currentCookie = localStorage.getItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
-        if (currentCookie && currentCookie !== "[]") { // Check if cookie exists and isn't already an empty array
+        const currentStorage = localStorage.getItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
+        if (currentStorage && currentStorage !== "[]") { 
             localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
         }
       }
     } catch (error) {
       console.error("Failed to save chat history to localStorage:", error);
-      toast({ // Added toast as it's a dependency
-        variant: "destructive",
-        title: "Save Error",
-        description: "Could not save chat history.",
-      });
+      // toast is memoized, safe to use in dependency array if needed, but here it's a side effect.
+      // To avoid issues, ensure `toast` itself is stable or this effect doesn't run too often.
     }
-  }, [messages, initialLoadAttempted, toast]);
+  }, [messages, initialLoadAttempted]); // Removed toast from here as it might cause loops if not stable
 
   const handleSendMessage = async (e?: FormEvent) => {
     e?.preventDefault();
@@ -230,26 +227,26 @@ export function ChatInterface() {
                     <>
                       {message.imageUrl && !message.imageError && (
                         <div className="mb-2 rounded-md overflow-hidden border border-border">
-                           <Skeleton className="w-full aspect-square rounded-md bg-muted/50">
+                           <Skeleton className="w-full aspect-square rounded-md bg-muted/50"> {/* Base Skeleton, Image is child */}
                             <Image
                               src={message.imageUrl}
                               alt={message.text || "Generated AI Image"}
-                              width={300}
+                              width={300} 
                               height={300}
                               className="object-contain w-full h-full"
                               onLoadingComplete={(img) => {
-                                const skeletonElement = img.parentElement?.parentElement;
-                                if (skeletonElement) {
-                                  skeletonElement.classList.remove('bg-muted/50', 'animate-pulse');
-                                  skeletonElement.classList.add('!bg-transparent');
+                                const skeletonElement = img.parentElement as HTMLElement | null; // next/image wraps img in a span or div
+                                if (skeletonElement && skeletonElement.parentElement) { // skeletonElement.parentElement is the <Skeleton>
+                                  (skeletonElement.parentElement as HTMLElement).style.display = 'none';
                                 }
                               }}
                               onError={(e) => {
-                                console.error("Failed to load image:", e.currentTarget.src);
-                                const skeletonElement = e.currentTarget.parentElement?.parentElement;
+                                console.error("Failed to load image:", (e.target as HTMLImageElement).src);
+                                const skeletonElement = (e.target as HTMLImageElement).parentElement?.parentElement as HTMLElement | null;
                                 if (skeletonElement) {
-                                    skeletonElement.classList.remove('animate-pulse', 'bg-muted/50');
-                                    skeletonElement.classList.add('!bg-destructive/10'); 
+                                    skeletonElement.classList.remove('animate-pulse', 'bg-muted', 'bg-muted/50', '!bg-transparent');
+                                    skeletonElement.classList.add('bg-destructive/10'); 
+                                    skeletonElement.style.display = 'flex'; // Ensure it's visible
                                 }
 
                                 if (!message.imageError) { 
@@ -309,6 +306,8 @@ export function ChatInterface() {
     </Card>
   );
 }
+    
+
     
 
     
