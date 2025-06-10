@@ -7,13 +7,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
-import { generateEnhancedResponse, GenerateEnhancedResponseInput } from "@/ai/flows/generate-enhanced-response";
-// import { searchAndSummarize, SearchAndSummarizeInput } from "@/ai/flows/search-and-summarize"; // Removed search
+import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, AiChatMessage } from "@/ai/flows/search-and-summarize";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-// import { Label } from "@/components/ui/label"; // Removed Label
-// import { Switch } from "@/components/ui/switch"; // Removed Switch
-// import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Removed Alert
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Message {
   id: string;
@@ -23,16 +20,10 @@ interface Message {
   isLoading?: boolean;
 }
 
-export type AiChatMessage = {
-  sender: "user" | "bot";
-  text: string;
-};
-
 export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  // const [useSearch, setUseSearch] = useState(false); // Removed useSearch
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -44,7 +35,7 @@ export function ChatInterface() {
 
   const handleSendMessage = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!input.trim()) return; // Removed !useSearch condition
+    if (!input.trim()) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -72,13 +63,12 @@ export function ChatInterface() {
       .map(({ sender, text }) => ({ sender, text }));
 
     try {
-      // Always use generateEnhancedResponse now
-      const enhancedResponseInput: GenerateEnhancedResponseInput = { 
+      const searchInput: SearchAndSummarizeInput = { 
         query: input,
         history: historyForAI
       };
-      const result = await generateEnhancedResponse(enhancedResponseInput);
-      const botResponseText = result.enhancedResponse;
+      const result: SearchAndSummarizeOutput = await searchAndSummarize(searchInput);
+      const botResponseText = result.summary;
       
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
@@ -119,10 +109,17 @@ export function ChatInterface() {
     <Card className="w-full h-[calc(100vh-10rem)] md:h-[calc(100vh-12rem)] flex flex-col shadow-2xl bg-card/80 backdrop-blur-sm">
       <CardHeader className="border-b border-border">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-           <CardTitle className="font-headline text-2xl text-foreground">Enhanced AI Chat</CardTitle>
-           {/* Removed Search Switch and Label */}
+           <CardTitle className="font-headline text-2xl text-foreground">AI Chat</CardTitle>
         </div>
-        {/* Removed Search Active Alert */}
+         {isLoading && (
+          <Alert className="border-accent text-sm mt-2">
+            <Icons.Search className="h-5 w-5 text-accent" />
+            <AlertTitle className="text-accent font-semibold">AI Thinking...</AlertTitle>
+            <AlertDescription className="text-muted-foreground">
+              The AI may use simulated internet search for up-to-date info. This might take a moment.
+            </AlertDescription>
+          </Alert>
+        )}
       </CardHeader>
       <CardContent className="flex-1 p-0 overflow-hidden">
         <ScrollArea ref={scrollAreaRef} className="h-full p-4 md:p-6">
@@ -177,7 +174,7 @@ export function ChatInterface() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type your message..." // Updated placeholder
+            placeholder="Type your message..."
             className="flex-1 resize-none min-h-[40px] max-h-[120px] bg-input border-border focus-visible:ring-accent"
             disabled={isLoading}
             rows={1}

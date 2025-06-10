@@ -1,9 +1,7 @@
-
-// src/ai/flows/search-and-summarize.ts
 'use server';
-
 /**
- * @fileOverview This file defines a Genkit flow for searching external sources and summarizing the results, considering conversation history.
+ * @fileOverview This file defines a Genkit flow for searching external sources (simulated)
+ * and summarizing the results, considering conversation history and citing sources.
  *
  * - searchAndSummarize - A function that takes a query and history, returns a summarized response.
  * - SearchAndSummarizeInput - The input type for the searchAndSummarize function.
@@ -21,12 +19,12 @@ export type AiChatMessage = z.infer<typeof ChatMessageSchema>;
 
 const SearchAndSummarizeInputSchema = z.object({
   query: z.string().describe('The current search query from the user.'),
-  history: z.array(ChatMessageSchema).optional().describe('The conversation history to provide context. The last message in history is the current query by the user if not empty.'),
+  history: z.array(ChatMessageSchema).optional().describe('The conversation history to provide context.'),
 });
 export type SearchAndSummarizeInput = z.infer<typeof SearchAndSummarizeInputSchema>;
 
 const SearchAndSummarizeOutputSchema = z.object({
-  summary: z.string().describe('A summarized response. This string will be plain text by default. If the user query explicitly asks for JSON output using phrases like "in JSON format" or "as JSON", then this string should be a valid JSON string. This field should ONLY contain the direct answer, with no meta-commentary about the search process or AI capabilities.'),
+  summary: z.string().describe('A summarized response that incorporates search results if a search was performed. Includes attribution if information is from the internet.'),
 });
 export type SearchAndSummarizeOutput = z.infer<typeof SearchAndSummarizeOutputSchema>;
 
@@ -34,37 +32,49 @@ export async function searchAndSummarize(input: SearchAndSummarizeInput): Promis
   return searchAndSummarizeFlow(input);
 }
 
-const searchTool = ai.defineTool({
-  name: 'search',
-  description: 'Performs a web search and returns ONLY PLAIN TEXT information related to the query. This tool NEVER produces JSON. Use this tool if the user asks a question that requires up-to-date information or knowledge beyond your training data. This tool is essential for answering questions about current events or specific entities the AI might not know about.',
-  inputSchema: z.object({
-    query: z.string().describe('The search query, which should be derived from the user\'s latest question and relevant conversation history.'),
-  }),
-  outputSchema: z.string().describe('Plain textual information found from the web search. This is always plain text and should be used to formulate the summary.'),
-},
-async (input) => {
-    console.log(`Simulated search for: ${input.query}`);
-    // Simulate more realistic search results based on the query
-    if (input.query.toLowerCase().includes("ubuntu")) {
-      return `Simulated search findings for "${input.query}": Ubuntu is a popular open-source Linux distribution based on Debian. It is developed by Canonical Ltd. and is known for its ease of use, strong community support, and regular release cycle. Ubuntu is widely used for desktops, servers, and cloud computing. Key features include a user-friendly interface (GNOME by default), a vast software repository, and robust security features. It's a good choice for beginners and experienced users alike.`;
+const searchTool = ai.defineTool(
+  {
+    name: 'internetSearch',
+    description: 'Performs a simulated internet search to find up-to-date information or information beyond the AI\'s training data. Returns the content found and its source URL.',
+    inputSchema: z.object({
+      searchQuery: z.string().describe('The query to search the internet for.'),
+    }),
+    outputSchema: z.object({
+      content: z.string().describe('The textual content found by the search.'),
+      source: z.string().describe('The simulated URL or source of the information.'),
+    }),
+  },
+  async (input) => {
+    console.log(`Simulated internet search for: ${input.searchQuery}`);
+    let content = `This is a general simulated search result for "${input.searchQuery}". Specific details would require a real search.`;
+    let source = `simulated-search-engine.com/search?q=${encodeURIComponent(input.searchQuery)}`;
+
+    if (input.searchQuery.toLowerCase().includes("ubuntu")) {
+      content = "Ubuntu is a popular open-source Linux distribution based on Debian. It is developed by Canonical Ltd. and is known for its ease of use, strong community support, and regular release cycle. Ubuntu is widely used for desktops, servers, and cloud computing.";
+      source = "simulated-search-engine.com/ubuntu-overview";
+    } else if (input.searchQuery.toLowerCase().includes("next.js")) {
+      content = "Next.js is an open-source web development framework created by Vercel, enabling React-based web applications with server-side rendering and static site generation.";
+      source = "simulated-search-engine.com/nextjs-framework";
+    } else if (input.searchQuery.toLowerCase().includes("weather in paris")) {
+      content = "The simulated weather in Paris is currently sunny with a high of 22°C. Remember, this is not real-time data!";
+      source = "simulated-weather-service.com/paris";
     }
-    return `Simulated search findings for "${input.query}": This topic generally covers aspects like its definition, main features, common applications, and recent developments. For example, if searching for a technology, results would typically cover its purpose, benefits, and comparisons to alternatives. This simulated information should be used to form the summary.`;
+
+    return {
+      content: content,
+      source: source,
+    };
   }
 );
 
-const SummarizePromptInputSchema = z.object({
-  query: z.string().describe('The current user query.'),
-  history: z.array(ChatMessageSchema).optional().describe('The conversation history.'),
-});
-
-const summarizePrompt = ai.definePrompt({
-  name: 'summarizePrompt',
-  input: {schema: SummarizePromptInputSchema},
+const searchAndSummarizePrompt = ai.definePrompt({
+  name: 'searchAndSummarizePrompt',
+  input: {schema: SearchAndSummarizeInputSchema},
   output: {schema: SearchAndSummarizeOutputSchema},
   tools: [searchTool],
-  prompt: `You are an AI assistant. Your primary task is to answer the user's LATEST question based on the provided conversation history and, if necessary, information gathered using the 'search' tool. You MUST ALWAYS produce a response object adhering to the JSON schema: { "properties": { "summary": { "type": "string" } }, "required": ["summary"] }.
-
-Conversation History (if available, most recent messages last):
+  prompt: `You are an AI assistant. Your goal is to answer the user's LATEST question.
+Consider the conversation history for context.
+Conversation History (if any, most recent messages last):
 {{#if history}}
 {{#each history}}
 {{this.sender}}: {{this.text}}
@@ -73,39 +83,26 @@ Conversation History (if available, most recent messages last):
 No conversation history provided.
 {{/if}}
 
-The user's LATEST question is: "{{{query}}}"
+User's LATEST question: "{{{query}}}"
 
-You have one tool available:
-- 'search': Accepts a search query string. Performs a web search and returns ONLY PLAIN TEXT information. It NEVER produces JSON. Use this tool if the user's LATEST question requires up-to-date information or knowledge beyond your training data.
+1.  **Analyze the Query**: Determine if the user's latest question requires information that is likely outside your general knowledge or needs to be up-to-date (e.g., current events, specific product details, highly specific facts).
 
-Follow these steps:
+2.  **Use Search Tool (If Necessary)**:
+    *   If you need external information, use the 'internetSearch' tool.
+    *   The tool will return an object like: \`{ "content": "information found...", "source": "www.example-source.com" }\`.
 
-1.  **Analyze Intent:**
-    *   Carefully examine the user's LATEST question: "{{{query}}}".
-    *   Consider the ENTIRE conversation history for context. If the LATEST question is short (e.g., "search it", "tell me more", "yes"), the history is CRUCIAL to determine the actual topic of interest. For instance, if the previous message was about "Ubuntu", and the user says "search it", you should search for "Ubuntu".
-    *   Determine if the 'search' tool is needed. If the question can be answered from your general knowledge and the history, you might not need the tool. However, if it asks for current information, specific details you wouldn't know, or explicitly asks to search, use the tool.
+3.  **Formulate Your Response**:
+    *   **If you used the 'internetSearch' tool**:
+        *   Your response MUST incorporate the 'content' from the tool.
+        *   You MUST clearly state that the information came from the internet and CITE the 'source' provided by the tool.
+        *   For example: "According to [source from tool], [summary of content from tool]. This information was retrieved from the internet." or "I found on the internet at [source from tool] that [summary of content from tool]."
+        *   Do not just repeat the tool's output verbatim; summarize or integrate it naturally into your answer.
+    *   **If you did NOT use the search tool**: Answer based on your general knowledge.
 
-2.  **Tool Use (If Necessary):**
-    *   If you decide to use the 'search' tool:
-        a.  Formulate an effective search query for the tool. This query should be based on the user's LATEST question and relevant context from the history.
-        b.  Invoke the 'search' tool with this query.
-    *   If you do not use the search tool, proceed to step 3.
+4.  **Output**: Your entire response should be a single string in the 'summary' field.
 
-3.  **Generate Summary:**
-    *   Based on the information from the 'search' tool (if used), your general knowledge, and the conversation history, generate the content for the "summary" field.
-    *   The content of the "summary" field MUST be a direct and concise answer to the user's LATEST question: "{{{query}}}".
-    *   **Formatting the "summary" field's content:**
-        *   **Default (Plain Text):** The content of the "summary" field MUST be plain text.
-            Example (User: "Tell me about cats"): The "summary" content would be "Cats are small, carnivorous mammals kept as pets. They are known for their agility and purring."
-        *   **JSON Format (Conditional):** If the user's LATEST question "{{{query}}}" *explicitly includes one of the exact phrases "in JSON format", "as JSON", or "output JSON"*, then and ONLY then, the content of the "summary" field MUST be a well-formed JSON string.
-            Example (User: "Tell me about cats in JSON format"): The "summary" content would be "{ \"animal\": \"cat\", \"sound\": \"meow\", \"domesticated\": true }".
-    *   **VERY IMPORTANT:** The content of the "summary" field itself MUST NOT contain any meta-commentary about your capabilities, limitations, the search process, your decision-making, or confirmations like "Okay, I will search for X." It must ONLY be the direct answer.
-
-4.  **Final Output:**
-    *   Ensure your entire response is a single JSON object: '{ "summary": "YOUR_GENERATED_SUMMARY_STRING_HERE" }'.
-    *   If, after considering all information, you cannot provide a meaningful answer or perform the requested search due to ambiguity, your "summary" field should reflect this politely, e.g., "I need more information to help with that. Could you clarify your request?" or "Based on our conversation, I'm unsure what to search for. Please specify." DO NOT RETURN NULL or an invalid structure.
-
-User's LATEST Question: {{{query}}}`,
+User's LATEST Question: {{{query}}}
+Assistant's Response (ensure to follow sourcing rules if search tool is used):`,
 });
 
 const searchAndSummarizeFlow = ai.defineFlow(
@@ -115,13 +112,11 @@ const searchAndSummarizeFlow = ai.defineFlow(
     outputSchema: SearchAndSummarizeOutputSchema,
   },
   async (input: SearchAndSummarizeInput) => {
-    const {output} = await summarizePrompt({ query: input.query, history: input.history });
-    if (!output || typeof output.summary !== 'string') { // Check if output is null or summary is not a string
-      console.error("SearchAndSummarizeFlow: summarizePrompt returned invalid output or null.", output);
-      // Return a valid error summary instead of throwing, to ensure schema compliance
+    const {output} = await searchAndSummarizePrompt({ query: input.query, history: input.history });
+    if (!output || typeof output.summary !== 'string') {
+      console.error("SearchAndSummarizeFlow: searchAndSummarizePrompt returned invalid output or null.", output);
       return { summary: "I encountered an issue processing your request. Please try rephrasing or try again later." };
     }
     return output;
   }
 );
-
