@@ -8,12 +8,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
 import { generateEnhancedResponse, GenerateEnhancedResponseInput } from "@/ai/flows/generate-enhanced-response";
-import { searchAndSummarize, SearchAndSummarizeInput } from "@/ai/flows/search-and-summarize";
+// import { searchAndSummarize, SearchAndSummarizeInput } from "@/ai/flows/search-and-summarize"; // Removed search
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+// import { Label } from "@/components/ui/label"; // Removed Label
+// import { Switch } from "@/components/ui/switch"; // Removed Switch
+// import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Removed Alert
 
 interface Message {
   id: string;
@@ -32,7 +32,7 @@ export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [useSearch, setUseSearch] = useState(false);
+  // const [useSearch, setUseSearch] = useState(false); // Removed useSearch
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -44,7 +44,7 @@ export function ChatInterface() {
 
   const handleSendMessage = async (e?: FormEvent) => {
     e?.preventDefault();
-    if (!input.trim() && !useSearch) return;
+    if (!input.trim()) return; // Removed !useSearch condition
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -72,22 +72,13 @@ export function ChatInterface() {
       .map(({ sender, text }) => ({ sender, text }));
 
     try {
-      let botResponseText = "";
-      if (useSearch) {
-        const searchInput: SearchAndSummarizeInput = { 
-          query: input || "Provide general information based on search.",
-          history: historyForAI 
-        };
-        const result = await searchAndSummarize(searchInput);
-        botResponseText = result.summary;
-      } else {
-        const enhancedResponseInput: GenerateEnhancedResponseInput = { 
-          query: input,
-          history: historyForAI
-        };
-        const result = await generateEnhancedResponse(enhancedResponseInput);
-        botResponseText = result.enhancedResponse;
-      }
+      // Always use generateEnhancedResponse now
+      const enhancedResponseInput: GenerateEnhancedResponseInput = { 
+        query: input,
+        history: historyForAI
+      };
+      const result = await generateEnhancedResponse(enhancedResponseInput);
+      const botResponseText = result.enhancedResponse;
       
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
@@ -129,28 +120,9 @@ export function ChatInterface() {
       <CardHeader className="border-b border-border">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
            <CardTitle className="font-headline text-2xl text-foreground">Enhanced AI Chat</CardTitle>
-           <div className="flex items-center space-x-2">
-            <Switch
-                id="search-mode"
-                checked={useSearch}
-                onCheckedChange={setUseSearch}
-                disabled={isLoading}
-            />
-            <Label htmlFor="search-mode" className="text-sm text-muted-foreground flex items-center gap-1">
-                <Icons.Search className="h-4 w-4"/> Use Web Search
-            </Label>
-            </div>
+           {/* Removed Search Switch and Label */}
         </div>
-        {isLoading && useSearch && (
-          <Alert className="mt-4 border-accent text-sm">
-            <Icons.Search className="h-5 w-5 text-accent" />
-            <AlertTitle className="text-accent font-semibold">Web Search Active</AlertTitle>
-            <AlertDescription className="text-muted-foreground">
-              The AI is currently performing a web search to gather the latest information. 
-              This helps provide a more comprehensive and up-to-date response. Please allow a moment.
-            </AlertDescription>
-          </Alert>
-        )}
+        {/* Removed Search Active Alert */}
       </CardHeader>
       <CardContent className="flex-1 p-0 overflow-hidden">
         <ScrollArea ref={scrollAreaRef} className="h-full p-4 md:p-6">
@@ -205,12 +177,12 @@ export function ChatInterface() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Type your message or search query..."
+            placeholder="Type your message..." // Updated placeholder
             className="flex-1 resize-none min-h-[40px] max-h-[120px] bg-input border-border focus-visible:ring-accent"
             disabled={isLoading}
             rows={1}
           />
-          <Button type="submit" disabled={isLoading || (!input.trim() && !useSearch)} size="icon" className="bg-accent hover:bg-accent/90">
+          <Button type="submit" disabled={isLoading || !input.trim()} size="icon" className="bg-accent hover:bg-accent/90">
             {isLoading ? (
               <Icons.Spinner className="w-5 h-5 animate-spin" />
             ) : (

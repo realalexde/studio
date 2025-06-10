@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -23,11 +24,13 @@ const navItems = [
 
 export function SidebarNav() {
   const pathname = usePathname();
-  const [currentModel, setCurrentModel] = React.useState("gemini"); 
+  const [currentModel, setCurrentModel] = React.useState("moonlight"); // Default to Moonlight (Gemini 2.0 Flash)
 
   const handleModelChange = (modelId: string) => {
     setCurrentModel(modelId);
     console.log("Model changed to:", modelId);
+    // Note: This UI change doesn't alter the actual Genkit model used for generation yet.
+    // The Genkit instance in src/ai/genkit.ts is still configured with a single model.
   };
 
 

@@ -1,3 +1,4 @@
+
 "use client";
 
 import * as React from "react";
@@ -17,11 +18,13 @@ interface ModelSelectorProps {
   disabled?: boolean;
 }
 
-// Define available models
+// Define available models with Moonlight branding
 const availableModels = [
-  { id: "gemini", name: "Gemini (Default)", icon: Icons.Brain },
-  // G4F is a Python library and not directly compatible with this Genkit (JS/TS) setup.
-  // { id: "g4f", name: "G4F (Conceptual)", icon: Icons.Brain }, 
+  { id: "moonlight-go", name: "Moonlight Go (Gemini 1.5 Flash)", icon: Icons.Brain },
+  { id: "moonlight-lite", name: "Moonlight Lite (Gemini 1.5 Pro)", icon: Icons.Brain },
+  { id: "moonlight", name: "Moonlight (Gemini 2.0 Flash)", icon: Icons.Brain },
+  { id: "moonlight-flash", name: "Moonlight Flash (Gemini 2.0 Flash lite)", icon: Icons.Brain },
+  { id: "moonlight-pro", name: "Moonlight Pro (Gemini 2.5 Flash preview)", icon: Icons.Brain },
 ];
 
 export function ModelSelector({ currentModel, onModelChange, disabled }: ModelSelectorProps) {
@@ -33,7 +36,7 @@ export function ModelSelector({ currentModel, onModelChange, disabled }: ModelSe
       <Select
         value={currentModel}
         onValueChange={onModelChange}
-        disabled={disabled || availableModels.length <= 1}
+        disabled={disabled} // Removed availableModels.length <= 1 as we now have multiple options
       >
         <SelectTrigger id="model-select" className="w-full md:w-[200px] bg-input border-border">
           <SelectValue placeholder="Select model" />
