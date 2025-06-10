@@ -68,7 +68,7 @@ export function ChatInterface() {
     setIsLoading(true);
 
     const historyForAI: AiChatMessage[] = currentMessages
-      .filter(msg => !msg.isLoading && msg.text.trim() !== "") // Don't send loading or empty messages
+      .filter(msg => !msg.isLoading && msg.text.trim() !== "") 
       .map(({ sender, text }) => ({ sender, text }));
 
     try {
@@ -76,14 +76,14 @@ export function ChatInterface() {
       if (useSearch) {
         const searchInput: SearchAndSummarizeInput = { 
           query: input || "Provide general information based on search.",
-          history: historyForAI.slice(-10) // Send last 10 messages for context
+          history: historyForAI 
         };
         const result = await searchAndSummarize(searchInput);
         botResponseText = result.summary;
       } else {
         const enhancedResponseInput: GenerateEnhancedResponseInput = { 
           query: input,
-          history: historyForAI.slice(-10) // Send last 10 messages for context
+          history: historyForAI
         };
         const result = await generateEnhancedResponse(enhancedResponseInput);
         botResponseText = result.enhancedResponse;
