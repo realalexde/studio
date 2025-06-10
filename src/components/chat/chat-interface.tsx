@@ -48,17 +48,21 @@ export function ChatInterface() {
           setMessages(
             loadedMessages.filter(msg =>
               typeof msg.id === 'string' &&
-              (typeof msg.text === 'string' || typeof msg.imageUrl === 'string') &&
+              // A message is valid if it has text, or an imageUrl (even if it previously errored and imageUrl is now undefined but imageError is true)
+              (typeof msg.text === 'string' || typeof msg.imageUrl === 'string' || (msg.imageUrl === undefined && msg.imageError === true)) &&
               (msg.sender === 'user' || msg.sender === 'bot') &&
-              !msg.isLoading && // Don't load messages that were in a loading state
-              !msg.imageError // Don't try to reload images that previously errored
-            )
+              typeof msg.isLoading === 'boolean' // Ensure isLoading exists, even if false
+            ).map(msg => ({ // Ensure isLoading is false for all loaded messages, and imageUrl is handled with imageError
+              ...msg,
+              isLoading: false, 
+              imageUrl: msg.imageError ? undefined : msg.imageUrl,
+            }))
           );
         }
       }
     } catch (error) {
       console.error("Failed to load chat history from localStorage:", error);
-      localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
+      localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY); // Clear corrupted history
       toast({
         variant: "destructive",
         title: "Chat History Error",
@@ -78,18 +82,22 @@ export function ChatInterface() {
     }
 
     try {
+      // Only save if there are messages and none are in a loading state
       if (messages.length > 0 && !messages.some(msg => msg.isLoading)) {
-        const messagesToSave = messages.map(({ isLoading, imageError, ...rest }) => {
-          // If imageError is true, ensure imageUrl is not saved to prevent reload attempts on corrupted URLs
-          return imageError ? { ...rest, imageUrl: undefined } : rest;
+        const messagesToSave = messages.map(({ isLoading, ...rest }) => {
+          // If imageError is true, imageUrl should already be undefined from error handling.
+          // This ensures it's explicitly undefined in saved data if imageError is true.
+          return rest.imageError ? { ...rest, imageUrl: undefined } : rest;
         });
         const messagesJson = JSON.stringify(messagesToSave);
         localStorage.setItem(CHAT_HISTORY_LOCAL_STORAGE_KEY, messagesJson);
       } else if (messages.length === 0 && initialLoadAttempted) {
+        // If messages become empty *after* initial load, clear storage
         localStorage.removeItem(CHAT_HISTORY_LOCAL_STORAGE_KEY);
       }
     } catch (error) {
       console.error("Failed to save chat history to localStorage:", error);
+      // Optionally, inform the user about save failure
     }
   }, [messages, initialLoadAttempted]);
 
@@ -101,6 +109,7 @@ export function ChatInterface() {
       id: Date.now().toString(),
       text: input,
       sender: "user",
+      isLoading: false,
     };
 
     setMessages((prevMessages) => [...prevMessages, userMessage]);
@@ -120,13 +129,13 @@ export function ChatInterface() {
     setIsLoading(true);
 
     const historyForAI: AiChatMessage[] = [...messages, userMessage]
-      .filter(msg => !msg.isLoading && (msg.text.trim() !== "" || msg.imageUrl))
+      .filter(msg => !msg.isLoading && (msg.text.trim() !== "" || msg.imageUrl)) // Include messages that are just images
       .map(({ sender, text }) => ({ sender, text: text || "" }));
 
     try {
       const flowInput: SearchAndSummarizeInput = {
         query: input,
-        history: historyForAI.slice(0, -1)
+        history: historyForAI.slice(0, -1) 
       };
       const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
 
@@ -144,7 +153,7 @@ export function ChatInterface() {
       setMessages((prevMessages) =>
         prevMessages.map((msg) =>
           msg.id === botLoadingMessageId
-            ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageUrl: undefined }
+            ? { ...msg, text: `Error: ${errorText}`, isLoading: false, imageUrl: undefined, imageError: true }
             : msg
         )
       );
@@ -219,7 +228,7 @@ export function ChatInterface() {
                     <>
                       {message.imageUrl && !message.imageError && (
                         <div className="mb-2 rounded-md overflow-hidden border border-border">
-                           <Skeleton className="w-full aspect-square rounded-md bg-muted/50">
+                           <Skeleton className="w-full aspect-square rounded-md bg-muted/50"> {/* Initial classes */}
                             <Image
                               src={message.imageUrl}
                               alt={message.text || "Generated AI Image"}
@@ -227,14 +236,24 @@ export function ChatInterface() {
                               height={300}
                               className="object-contain w-full h-full"
                               onLoadingComplete={(img) => {
-                                if (img.parentElement) {
-                                  img.parentElement.classList.remove('bg-muted/50', 'animate-pulse');
-                                  img.parentElement.classList.add('!bg-transparent');
+                                // Target the Skeleton (parent of Next/Image's wrapper span)
+                                const skeletonElement = img.parentElement?.parentElement;
+                                if (skeletonElement) {
+                                  skeletonElement.classList.remove('bg-muted/50', 'animate-pulse');
+                                  skeletonElement.classList.add('!bg-transparent');
                                 }
                               }}
                               onError={(e) => {
                                 console.error("Failed to load image:", e.currentTarget.src);
-                                if (!message.imageError) {
+                                // Target the Skeleton (parent of Next/Image's wrapper span)
+                                const skeletonElement = e.currentTarget.parentElement?.parentElement;
+                                if (skeletonElement) {
+                                    skeletonElement.classList.remove('animate-pulse', 'bg-muted/50');
+                                    // Optionally add a class to indicate error state on the skeleton
+                                    skeletonElement.classList.add('!bg-destructive/10'); 
+                                }
+
+                                if (!message.imageError) { // Only toast and update state once
                                   toast({
                                     variant: "destructive",
                                     title: "Image Load Error",
@@ -244,16 +263,14 @@ export function ChatInterface() {
                                     msg.id === message.id ? { ...msg, imageError: true, imageUrl: undefined } : msg
                                   ));
                                 }
-                                if (e.currentTarget.parentElement) {
-                                    e.currentTarget.parentElement.classList.remove('animate-pulse');
-                                }
                               }}
                               data-ai-hint="generated art"
                             />
                           </Skeleton>
                         </div>
                       )}
-                      {(message.text || (!message.text && !message.imageUrl && !message.imageError)) && <p className="whitespace-pre-wrap">{message.text}</p>}
+                      {/* Render text if it exists, OR if it's a bot message that was supposed to be an image but errored */}
+                      {(message.text || (!message.text && message.sender === 'bot' && message.imageError)) && <p className="whitespace-pre-wrap">{message.text || (message.imageError ? "Image could not be displayed." : "")}</p>}
                     </>
                   )}
                 </div>
@@ -294,4 +311,4 @@ export function ChatInterface() {
     </Card>
   );
 }
-
+    
