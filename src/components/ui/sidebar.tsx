@@ -1,3 +1,4 @@
+
 "use client"
 
 import * as React from "react"
@@ -171,7 +172,7 @@ const Sidebar = React.forwardRef<
       collapsible = "offcanvas",
       className,
       children,
-      ...props
+      ...props // These are the rest of React.ComponentProps<"div">
     },
     ref
   ) => {
@@ -193,8 +194,9 @@ const Sidebar = React.forwardRef<
     }
 
     if (isMobile) {
+      // Pass only relevant props to Sheet. Do not spread `...props` from Sidebar component.
       return (
-        <Sheet open={openMobile} onOpenChange={setOpenMobile} {...props}>
+        <Sheet open={openMobile} onOpenChange={setOpenMobile}>
           <SheetContent
             data-sidebar="sidebar"
             data-mobile="true"
@@ -212,14 +214,16 @@ const Sidebar = React.forwardRef<
       )
     }
 
+    // Desktop rendering uses ref, className, variant, collapsible, and ...props
     return (
       <div
         ref={ref}
-        className="group peer hidden md:block text-sidebar-foreground"
+        className={cn("group peer hidden md:block text-sidebar-foreground", className)}
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
+        {...props} // Spread rest of div props here for the main desktop wrapper
       >
         {/* This is what handles the sidebar gap on desktop */}
         <div
@@ -241,10 +245,9 @@ const Sidebar = React.forwardRef<
             // Adjust the padding for floating and inset variants.
             variant === "floating" || variant === "inset"
               ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
-              : "group-data-[collapsible=icon]:w-[--sidebar-width-icon] group-data-[side=left]:border-r group-data-[side=right]:border-l",
-            className
+              : "group-data-[collapsible=icon]:w-[--sidebar-width-icon] group-data-[side=left]:border-r group-data-[side=right]:border-l"
+            // Note: The `className` prop from Sidebar's signature is applied to the outer div, not this one.
           )}
-          {...props}
         >
           <div
             data-sidebar="sidebar"
@@ -761,3 +764,4 @@ export {
   SidebarTrigger,
   useSidebar,
 }
+
