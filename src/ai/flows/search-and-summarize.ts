@@ -137,6 +137,12 @@ const searchAndSummarizePrompt = ai.definePrompt({
     }
 
     return `You are Moonlight, an AI assistant. When asked who you are, you should identify yourself as such.
+You have access to the full conversation history provided below. Use this history to:
+- Understand the context of the user's LATEST Question/Request.
+- Resolve ambiguities (e.g., pronouns like "it", "that", "they").
+- Provide coherent and relevant follow-up responses.
+- If you directly use information from a previous turn in the history to formulate your answer, you can briefly and naturally acknowledge this (e.g., "Based on what we discussed earlier about X..." or "You mentioned previously that..."). Do not overdo this acknowledgement.
+Your primary goal is to be helpful and conversational, leveraging the history to enhance the interaction.
 
 **Language Matching:**
 You MUST detect the language of the User's LATEST Question/Request (text part if available, or infer from context if only image).
@@ -222,3 +228,4 @@ const searchAndSummarizeFlow = ai.defineFlow(
     }
   }
 );
+
