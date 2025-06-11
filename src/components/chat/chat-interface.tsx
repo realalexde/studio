@@ -8,7 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
-import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, AiChatMessage, SYSTEM_INSTRUCTIONS } from "@/ai/flows/search-and-summarize";
+import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, AiChatMessage } from "@/ai/flows/search-and-summarize";
+import { SYSTEM_INSTRUCTIONS } from "@/ai/prompts/chat-system-instructions";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,12 +19,12 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription as DialogDesc, // Alias to avoid conflict with CardDescription
+  DialogDescription as DialogDesc, 
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger, TabsContent as TabsContentUI } from "@/components/ui/tabs"; // Alias to avoid conflict
+import { Tabs, TabsList, TabsTrigger, TabsContent as TabsContentUI } from "@/components/ui/tabs"; 
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input"; 
@@ -76,7 +77,6 @@ export function ChatInterface() {
   const [editingDialogId, setEditingDialogId] = useState<string | null>(null);
   const [currentRenameValue, setCurrentRenameValue] = useState<string>("");
 
-  // Studio Mode State
   const [studioMode, setStudioMode] = useState<boolean>(false);
   const [temperature, setTemperature] = useState<number>(0.7);
   const [lastRequestDebug, setLastRequestDebug] = useState<object | null>(null);
@@ -87,7 +87,6 @@ export function ChatInterface() {
   const modelDisplayName = selectedModel ? selectedModel.name : "";
 
   useEffect(() => {
-    // Load Studio Mode settings from localStorage
     const savedStudioMode = localStorage.getItem(STUDIO_MODE_STORAGE_KEY);
     if (savedStudioMode) setStudioMode(JSON.parse(savedStudioMode));
     const savedTemperature = localStorage.getItem(STUDIO_TEMPERATURE_STORAGE_KEY);
@@ -150,7 +149,6 @@ export function ChatInterface() {
   useEffect(() => {
     if (!initialLoadComplete) return; 
 
-    // Save Studio Mode settings to localStorage
     localStorage.setItem(STUDIO_MODE_STORAGE_KEY, JSON.stringify(studioMode));
     localStorage.setItem(STUDIO_TEMPERATURE_STORAGE_KEY, temperature.toString());
 
@@ -866,3 +864,4 @@ export function ChatInterface() {
 
 
     
+
