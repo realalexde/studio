@@ -54,7 +54,7 @@ export function ChatInterface() {
   const [currentInputText, setCurrentInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-  const [triggerFocus, setTriggerFocus] = useState(false); // New state for triggering focus
+  const [triggerFocus, setTriggerFocus] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -163,6 +163,11 @@ export function ChatInterface() {
   useEffect(() => {
     if (triggerFocus && textareaRef.current) {
       textareaRef.current.focus();
+      // Attempt to also trigger a click, which can help in some WebViews
+      // to bring up the keyboard, especially if .focus() alone isn't enough.
+      if (typeof textareaRef.current.click === 'function') {
+        textareaRef.current.click();
+      }
       setTriggerFocus(false); // Reset the trigger
     }
   }, [triggerFocus]);
@@ -743,5 +748,8 @@ export function ChatInterface() {
     
 
       
+
+    
+
 
     
