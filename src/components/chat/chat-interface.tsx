@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
 import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, AiChatMessage } from "@/ai/flows/search-and-summarize";
-import { SYSTEM_INSTRUCTIONS } from "@/ai/prompts/chat-system-instructions";
+// Removed direct import of SYSTEM_INSTRUCTIONS as it's now handled by the flow if custom is empty.
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -603,15 +603,14 @@ export function ChatInterface() {
                     <CardHeader className="pb-2">
                         <CardTitle className="text-base">System Instructions</CardTitle>
                         <CardDescription className="text-xs">
-                            Edit the system prompt below. Leave empty to use default Moonlight instructions.
-                            Default instructions can be found in <code className="text-xs bg-muted p-1 rounded">src/ai/prompts/chat-system-instructions.ts</code>.
+                            Edit the system prompt below. Leave empty to use default instructions.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Textarea
                             value={studioSystemPrompt}
                             onChange={(e) => setStudioSystemPrompt(e.target.value)}
-                            placeholder="Default Moonlight instructions will be used if this is empty..."
+                            placeholder="Default instructions will be used if this is empty..."
                             className="min-h-[100px] text-xs bg-muted/30 border-input focus-visible:ring-accent"
                             disabled={isLoading || isProcessingUpload}
                         />
@@ -880,6 +879,7 @@ export function ChatInterface() {
 
 
     
+
 
 
 
