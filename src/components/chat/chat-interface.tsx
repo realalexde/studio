@@ -79,6 +79,7 @@ export function ChatInterface() {
 
   const [studioMode, setStudioMode] = useState<boolean>(false);
   const [temperature, setTemperature] = useState<number>(0.7);
+  const [studioSystemPrompt, setStudioSystemPrompt] = useState<string>("");
   const [lastRequestDebug, setLastRequestDebug] = useState<object | null>(null);
   const [lastResponseDebug, setLastResponseDebug] = useState<object | null>(null);
 
@@ -151,6 +152,7 @@ export function ChatInterface() {
 
     localStorage.setItem(STUDIO_MODE_STORAGE_KEY, JSON.stringify(studioMode));
     localStorage.setItem(STUDIO_TEMPERATURE_STORAGE_KEY, temperature.toString());
+    // Note: studioSystemPrompt is not saved to localStorage for now
 
     try {
       const dataToSave: Record<string, DialogData> = {};
@@ -184,6 +186,7 @@ export function ChatInterface() {
     if (triggerFocus && textareaRef.current) {
       textareaRef.current.focus();
       if (typeof textareaRef.current.click === 'function') {
+        // Attempt to trigger click to help with mobile keyboard
         textareaRef.current.click();
       }
       setTriggerFocus(false);
@@ -293,7 +296,10 @@ export function ChatInterface() {
       const flowInput: SearchAndSummarizeInput = {
         query: userMessage.text, 
         history: historyForAI,
-        ...(studioMode && { temperature: temperature }),
+        ...(studioMode && { 
+          temperature: temperature,
+          customSystemInstructions: studioSystemPrompt.trim() || undefined,
+        }),
       };
       if (studioMode) setLastRequestDebug(flowInput);
 
@@ -417,7 +423,10 @@ export function ChatInterface() {
         const flowInput: SearchAndSummarizeInput = {
           query: queryPayload,
           history: historyForAI,
-          ...(studioMode && { temperature: temperature }),
+          ...(studioMode && { 
+            temperature: temperature,
+            customSystemInstructions: studioSystemPrompt.trim() || undefined,
+          }),
         };
         if (studioMode) setLastRequestDebug(flowInput);
 
@@ -591,11 +600,22 @@ export function ChatInterface() {
                 </Card>
 
                 <Card className="bg-background/70">
-                  <CardHeader className="pb-2">
-                     <CardTitle className="text-base">System Instructions</CardTitle>
-                     <CardDescription className="text-xs">Base instructions for the AI model (Using Moonlight default). Full text can be found in <code className="text-xs bg-muted p-1 rounded">src/ai/prompts/chat-system-instructions.ts</code>.</CardDescription>
-                  </CardHeader>
-                  {/* Full text of SYSTEM_INSTRUCTIONS removed from direct display */}
+                    <CardHeader className="pb-2">
+                        <CardTitle className="text-base">System Instructions</CardTitle>
+                        <CardDescription className="text-xs">
+                            Edit the system prompt below. Leave empty to use default Moonlight instructions.
+                            Default instructions can be found in <code className="text-xs bg-muted p-1 rounded">src/ai/prompts/chat-system-instructions.ts</code>.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Textarea
+                            value={studioSystemPrompt}
+                            onChange={(e) => setStudioSystemPrompt(e.target.value)}
+                            placeholder="Default Moonlight instructions will be used if this is empty..."
+                            className="min-h-[100px] text-xs bg-muted/30 border-input focus-visible:ring-accent"
+                            disabled={isLoading || isProcessingUpload}
+                        />
+                    </CardContent>
                 </Card>
 
                 {lastRequestDebug && (
@@ -860,5 +880,6 @@ export function ChatInterface() {
 
 
     
+
 
 

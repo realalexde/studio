@@ -3,7 +3,7 @@
 /**
  * @fileOverview This file defines a Genkit flow for searching external sources (simulated),
  * generating images, and summarizing results, considering conversation history and user-uploaded images.
- * It also includes functionality for a "Studio Mode" allowing temperature control.
+ * It also includes functionality for a "Studio Mode" allowing temperature control and custom system prompts.
  *
  * - searchAndSummarize - A function that takes a query (text or image+text) and history, returns a summarized response.
  * - SearchAndSummarizeInput - The input type for the searchAndSummarize function.
@@ -31,6 +31,7 @@ const SearchAndSummarizeInputSchema = z.object({
   ]).describe('The current query from the user, which can be text or an image with optional text.'),
   history: z.array(ChatMessageSchema).optional().describe('The conversation history to provide context. The last message in history is the current query by the user if not empty.'),
   temperature: z.number().min(0).max(1).optional().describe('Optional temperature setting for the AI model. Controls randomness. (0.0-1.0)'),
+  customSystemInstructions: z.string().optional().describe('Optional custom system instructions to override the default behavior.'),
 });
 export type SearchAndSummarizeInput = z.infer<typeof SearchAndSummarizeInputSchema>;
 
@@ -125,6 +126,10 @@ const searchAndSummarizePrompt = ai.definePrompt({
   output: {schema: SearchAndSummarizeOutputSchema},
   tools: [internetSearchTool, generateImageTool],
   prompt: (input: SearchAndSummarizeInput): Array<any> => { 
+    const systemInstructionsToUse = (input.customSystemInstructions && input.customSystemInstructions.trim() !== "")
+      ? input.customSystemInstructions
+      : SYSTEM_INSTRUCTIONS;
+
     const historyMessages = (input.history || [])
       .map(h => `${h.sender}: ${h.text || ''}${h.imageUrl ? ' (User sent an image attachment)' : ''}`)
       .join('\n') || 'No conversation history provided.';
@@ -141,7 +146,7 @@ const searchAndSummarizePrompt = ai.definePrompt({
 
     return [{
       text:
-        `${SYSTEM_INSTRUCTIONS}
+`${systemInstructionsToUse}
 
 Conversation History (if any, most recent messages last):
 ${historyMessages}
@@ -152,11 +157,10 @@ Assistant's Response (Remember to structure as a valid JSON object with a "summa
     }];
   },
   config: (input: SearchAndSummarizeInput) => { 
-    const configOptions: { temperature?: number; safetySettings?: any[] } = {}; // Add safetySettings to configOptions type
+    const configOptions: { temperature?: number; safetySettings?: any[] } = {};
     if (input.temperature !== undefined) {
       configOptions.temperature = input.temperature;
     }
-    // Default safety settings, can be overridden if passed in input or prompt definition
     configOptions.safetySettings = [ 
         { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
         { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
