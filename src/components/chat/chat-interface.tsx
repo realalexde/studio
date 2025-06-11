@@ -298,7 +298,9 @@ export function ChatInterface() {
     } finally {
       setIsLoading(false);
       if (textareaRef.current) {
-        textareaRef.current.focus();
+        setTimeout(() => {
+          textareaRef.current?.focus();
+        }, 0);
       }
     }
   };
@@ -422,7 +424,9 @@ export function ChatInterface() {
         setUploadAccompanyingText("");
         if (fileInputRef.current) fileInputRef.current.value = ""; 
         if (textareaRef.current) {
-          textareaRef.current.focus();
+          setTimeout(() => {
+            textareaRef.current?.focus();
+          }, 0);
         }
       }
     };
@@ -430,8 +434,10 @@ export function ChatInterface() {
       console.error("File Reading Error:", error);
       toast({ variant: "destructive", title: "File Error", description: "Could not read the selected image file."});
       setIsProcessingUpload(false);
-      if (textareaRef.current) { // Also focus if file reading fails
-        textareaRef.current.focus();
+      if (textareaRef.current) { 
+        setTimeout(() => { 
+            textareaRef.current?.focus();
+        }, 0);
       }
     };
   };
@@ -742,3 +748,5 @@ export function ChatInterface() {
     
 
       
+
+    
