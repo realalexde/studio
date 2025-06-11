@@ -180,7 +180,7 @@ export function ChatInterface() {
     }
   }, [dialogsData, activeDialogId]);
 
-  useEffect(() => {
+ useEffect(() => {
     if (triggerFocus && textareaRef.current) {
       textareaRef.current.focus();
       if (typeof textareaRef.current.click === 'function') {
@@ -593,13 +593,9 @@ export function ChatInterface() {
                 <Card className="bg-background/70">
                   <CardHeader className="pb-2">
                      <CardTitle className="text-base">System Instructions</CardTitle>
-                     <CardDescription className="text-xs">Base instructions given to the AI model for chat.</CardDescription>
+                     <CardDescription className="text-xs">Base instructions for the AI model (Using Moonlight default). Full text can be found in <code className="text-xs bg-muted p-1 rounded">src/ai/prompts/chat-system-instructions.ts</code>.</CardDescription>
                   </CardHeader>
-                  <CardContent>
-                    <ScrollArea className="h-32 w-full rounded-md border bg-muted/30 p-2">
-                        <pre className="text-xs whitespace-pre-wrap font-mono">{SYSTEM_INSTRUCTIONS}</pre>
-                    </ScrollArea>
-                  </CardContent>
+                  {/* Full text of SYSTEM_INSTRUCTIONS removed from direct display */}
                 </Card>
 
                 {lastRequestDebug && (
@@ -864,4 +860,5 @@ export function ChatInterface() {
 
 
     
+
 
