@@ -54,10 +54,11 @@ export function ChatInterface() {
   const [currentInputText, setCurrentInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [initialLoadComplete, setInitialLoadComplete] = useState(false);
+  const [triggerFocus, setTriggerFocus] = useState(false); // New state for triggering focus
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null); // Ref for the textarea
+  const textareaRef = useRef<HTMLTextAreaElement>(null); 
   const { toast } = useToast();
   const { getSelectedModel } = useModel();
 
@@ -159,6 +160,13 @@ export function ChatInterface() {
     }
   }, [dialogsData, activeDialogId]);
 
+  useEffect(() => {
+    if (triggerFocus && textareaRef.current) {
+      textareaRef.current.focus();
+      setTriggerFocus(false); // Reset the trigger
+    }
+  }, [triggerFocus]);
+
   const currentMessages = activeDialogId ? dialogsData[activeDialogId]?.messages || [] : [];
 
   const handleAddDialog = () => {
@@ -202,7 +210,6 @@ export function ChatInterface() {
       if (remainingDialogIds.length > 0) {
         setActiveDialogId(remainingDialogIds[0]);
       } else {
-        // If all are deleted, create a new default one.
         const defaultName = DEFAULT_DIALOG_ID.replace(/-/g, ' ');
         const capitalizedDefaultName = defaultName.charAt(0).toUpperCase() + defaultName.slice(1);
         setDialogsData({ [DEFAULT_DIALOG_ID]: { messages: [], name: capitalizedDefaultName } });
@@ -297,11 +304,7 @@ export function ChatInterface() {
       toast({ variant: "destructive", title: "Error", description: `Failed to get response: ${errorText}` });
     } finally {
       setIsLoading(false);
-      if (textareaRef.current) {
-        setTimeout(() => {
-          textareaRef.current?.focus();
-        }, 0);
-      }
+      setTriggerFocus(true);
     }
   };
   
@@ -423,22 +426,14 @@ export function ChatInterface() {
         setImageToUpload(null);
         setUploadAccompanyingText("");
         if (fileInputRef.current) fileInputRef.current.value = ""; 
-        if (textareaRef.current) {
-          setTimeout(() => {
-            textareaRef.current?.focus();
-          }, 0);
-        }
+        setTriggerFocus(true);
       }
     };
     reader.onerror = (error) => {
       console.error("File Reading Error:", error);
       toast({ variant: "destructive", title: "File Error", description: "Could not read the selected image file."});
       setIsProcessingUpload(false);
-      if (textareaRef.current) { 
-        setTimeout(() => { 
-            textareaRef.current?.focus();
-        }, 0);
-      }
+      setTriggerFocus(true);
     };
   };
 
