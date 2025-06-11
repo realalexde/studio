@@ -8,25 +8,28 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Icons } from "@/components/icons";
-import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, AiChatMessage } from "@/ai/flows/search-and-summarize";
+import { searchAndSummarize, SearchAndSummarizeInput, SearchAndSummarizeOutput, AiChatMessage, SYSTEM_INSTRUCTIONS } from "@/ai/flows/search-and-summarize";
 import { useToast } from "@/hooks/use-toast";
-import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useModel } from "@/contexts/model-context";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  DialogDescription as DialogDesc, // Alias to avoid conflict with CardDescription
+  DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsContent as TabsContentUI } from "@/components/ui/tabs"; // Alias to avoid conflict
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input"; 
+import { Slider } from "@/components/ui/slider";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+
 
 interface Message {
   id: string;
@@ -46,6 +49,8 @@ interface DialogData {
 const CHAT_DATA_STORAGE_KEY = "noxGptChatData_v2"; 
 const CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY = "noxGptChatActiveDialogId_v1"; 
 const DEFAULT_DIALOG_ID = "chat-1";
+const STUDIO_MODE_STORAGE_KEY = "noxGptStudioMode_v1";
+const STUDIO_TEMPERATURE_STORAGE_KEY = "noxGptStudioTemperature_v1";
 
 export function ChatInterface() {
   const [dialogsData, setDialogsData] = useState<Record<string, DialogData>>({});
@@ -71,10 +76,23 @@ export function ChatInterface() {
   const [editingDialogId, setEditingDialogId] = useState<string | null>(null);
   const [currentRenameValue, setCurrentRenameValue] = useState<string>("");
 
+  // Studio Mode State
+  const [studioMode, setStudioMode] = useState<boolean>(false);
+  const [temperature, setTemperature] = useState<number>(0.7);
+  const [lastRequestDebug, setLastRequestDebug] = useState<object | null>(null);
+  const [lastResponseDebug, setLastResponseDebug] = useState<object | null>(null);
+
+
   const selectedModel = getSelectedModel();
   const modelDisplayName = selectedModel ? selectedModel.name : "";
 
   useEffect(() => {
+    // Load Studio Mode settings from localStorage
+    const savedStudioMode = localStorage.getItem(STUDIO_MODE_STORAGE_KEY);
+    if (savedStudioMode) setStudioMode(JSON.parse(savedStudioMode));
+    const savedTemperature = localStorage.getItem(STUDIO_TEMPERATURE_STORAGE_KEY);
+    if (savedTemperature) setTemperature(parseFloat(savedTemperature));
+    
     try {
       const savedDataJson = localStorage.getItem(CHAT_DATA_STORAGE_KEY);
       const savedActiveDialogId = localStorage.getItem(CHAT_ACTIVE_DIALOG_ID_STORAGE_KEY);
@@ -132,6 +150,10 @@ export function ChatInterface() {
   useEffect(() => {
     if (!initialLoadComplete) return; 
 
+    // Save Studio Mode settings to localStorage
+    localStorage.setItem(STUDIO_MODE_STORAGE_KEY, JSON.stringify(studioMode));
+    localStorage.setItem(STUDIO_TEMPERATURE_STORAGE_KEY, temperature.toString());
+
     try {
       const dataToSave: Record<string, DialogData> = {};
       Object.entries(dialogsData).forEach(([id, data]) => {
@@ -152,7 +174,7 @@ export function ChatInterface() {
     } catch (error) {
       console.error("Failed to save chat data to localStorage:", error);
     }
-  }, [dialogsData, activeDialogId, initialLoadComplete]);
+  }, [dialogsData, activeDialogId, initialLoadComplete, studioMode, temperature]);
   
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -163,12 +185,10 @@ export function ChatInterface() {
   useEffect(() => {
     if (triggerFocus && textareaRef.current) {
       textareaRef.current.focus();
-      // Attempt to also trigger a click, which can help in some WebViews
-      // to bring up the keyboard, especially if .focus() alone isn't enough.
       if (typeof textareaRef.current.click === 'function') {
         textareaRef.current.click();
       }
-      setTriggerFocus(false); // Reset the trigger
+      setTriggerFocus(false);
     }
   }, [triggerFocus]);
 
@@ -274,9 +294,14 @@ export function ChatInterface() {
     try {
       const flowInput: SearchAndSummarizeInput = {
         query: userMessage.text, 
-        history: historyForAI
+        history: historyForAI,
+        ...(studioMode && { temperature: temperature }),
       };
+      if (studioMode) setLastRequestDebug(flowInput);
+
       const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
+      if (studioMode) setLastResponseDebug(result);
+
       setDialogsData(prev => {
         const currentDialog = prev[activeDialogId!];
         if (!currentDialog) return prev;
@@ -293,6 +318,7 @@ export function ChatInterface() {
     } catch (error) {
       console.error("AI Error:", error);
       const errorText = error instanceof Error ? error.message : "An unknown error occurred.";
+      if (studioMode) setLastResponseDebug({ error: errorText });
       setDialogsData(prev => {
         const currentDialog = prev[activeDialogId!];
         if (!currentDialog) return prev;
@@ -386,14 +412,20 @@ export function ChatInterface() {
         .map(({ sender, text, imageUrl }) => ({ sender, text: text || "", imageUrl }));
 
       try {
-        const flowInput: SearchAndSummarizeInput = {
-          query: {
+        const queryPayload = {
             text: uploadAccompanyingText || undefined, 
             imageUrl: imageDataUri,
-          },
-          history: historyForAI,
         };
+        const flowInput: SearchAndSummarizeInput = {
+          query: queryPayload,
+          history: historyForAI,
+          ...(studioMode && { temperature: temperature }),
+        };
+        if (studioMode) setLastRequestDebug(flowInput);
+
         const result: SearchAndSummarizeOutput = await searchAndSummarize(flowInput);
+        if (studioMode) setLastResponseDebug(result);
+
         setDialogsData(prev => {
           const currentDialog = prev[activeDialogId!];
           if (!currentDialog) return prev;
@@ -411,6 +443,7 @@ export function ChatInterface() {
       } catch (error) {
         console.error("AI Error with Uploaded Image:", error);
         const errorText = error instanceof Error ? error.message : "An unknown error occurred processing the image.";
+        if (studioMode) setLastResponseDebug({ error: errorText });
         setDialogsData(prev => {
           const currentDialog = prev[activeDialogId!];
           if (!currentDialog) return prev;
@@ -466,7 +499,7 @@ export function ChatInterface() {
           Chat
           {modelDisplayName && <span className="text-sm font-normal text-muted-foreground ml-1">({modelDisplayName})</span>}
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-center">
+        <div className="flex items-center gap-2 self-start sm:self-center flex-wrap">
           <Button variant="outline" size="sm" onClick={handleAddDialog} className="border-input hover:bg-accent/10">
             <Icons.PlusSquare className="w-4 h-4 mr-2" /> New Chat
           </Button>
@@ -475,6 +508,15 @@ export function ChatInterface() {
               <Icons.Trash2 className="w-4 h-4 mr-2" /> Delete Chat
             </Button>
           )}
+           <div className="flex items-center space-x-2">
+            <Switch
+              id="studio-mode-toggle"
+              checked={studioMode}
+              onCheckedChange={setStudioMode}
+              disabled={isLoading || isProcessingUpload}
+            />
+            <Label htmlFor="studio-mode-toggle" className="text-sm text-muted-foreground">Studio Mode</Label>
+          </div>
         </div>
       </div>
           
@@ -521,6 +563,77 @@ export function ChatInterface() {
             );
           })}
         </TabsList>
+
+        {studioMode && (
+          <Accordion type="single" collapsible className="w-full mb-4 bg-card/50 backdrop-blur-sm rounded-lg border border-border p-2">
+            <AccordionItem value="studio-settings">
+              <AccordionTrigger className="text-sm px-2 py-2 hover:no-underline">
+                <div className="flex items-center gap-2">
+                  <Icons.Settings className="w-4 h-4 text-accent" />
+                  Studio Mode Settings
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="p-2 space-y-4">
+                <Card className="bg-background/70">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base">Temperature</CardTitle>
+                    <CardDescription className="text-xs">Controls randomness. Lower is more deterministic, higher is more creative. (Current: {temperature.toFixed(2)})</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <Slider
+                      defaultValue={[temperature]}
+                      value={[temperature]}
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      onValueChange={(value) => setTemperature(value[0])}
+                      disabled={isLoading || isProcessingUpload}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-background/70">
+                  <CardHeader className="pb-2">
+                     <CardTitle className="text-base">System Instructions</CardTitle>
+                     <CardDescription className="text-xs">Base instructions given to the AI model for chat.</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-32 w-full rounded-md border bg-muted/30 p-2">
+                        <pre className="text-xs whitespace-pre-wrap font-mono">{SYSTEM_INSTRUCTIONS}</pre>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+
+                {lastRequestDebug && (
+                    <Card className="bg-background/70">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base">Last AI Request</CardTitle>
+                            <CardDescription className="text-xs">Data sent to the AI flow for the last message.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ScrollArea className="h-32 w-full rounded-md border bg-muted/30 p-2">
+                                <pre className="text-xs whitespace-pre-wrap font-mono">{JSON.stringify(lastRequestDebug, null, 2)}</pre>
+                            </ScrollArea>
+                        </CardContent>
+                    </Card>
+                )}
+                {lastResponseDebug && (
+                     <Card className="bg-background/70">
+                        <CardHeader className="pb-2">
+                            <CardTitle className="text-base">Last AI Response</CardTitle>
+                             <CardDescription className="text-xs">Raw data received from the AI flow for the last message.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <ScrollArea className="h-32 w-full rounded-md border bg-muted/30 p-2">
+                                <pre className="text-xs whitespace-pre-wrap font-mono">{JSON.stringify(lastResponseDebug, null, 2)}</pre>
+                            </ScrollArea>
+                        </CardContent>
+                    </Card>
+                )}
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
 
         <Card className="w-full flex-1 flex flex-col shadow-2xl bg-card/80 backdrop-blur-sm overflow-hidden">
           <CardContent className="flex-1 p-0 overflow-hidden">
@@ -661,9 +774,9 @@ export function ChatInterface() {
               <Icons.Paperclip className="w-6 h-6 text-accent"/>
               Upload Image to Chat
             </DialogTitle>
-            <DialogDescription>
+            <DialogDesc>
               Select an image file by clicking below, or drag and drop an image onto this dialog.
-            </DialogDescription>
+            </DialogDesc>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-1 items-center gap-4">
