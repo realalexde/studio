@@ -57,6 +57,7 @@ export function ChatInterface() {
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null); // Ref for the textarea
   const { toast } = useToast();
   const { getSelectedModel } = useModel();
 
@@ -296,6 +297,9 @@ export function ChatInterface() {
       toast({ variant: "destructive", title: "Error", description: `Failed to get response: ${errorText}` });
     } finally {
       setIsLoading(false);
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+      }
     }
   };
   
@@ -417,12 +421,18 @@ export function ChatInterface() {
         setImageToUpload(null);
         setUploadAccompanyingText("");
         if (fileInputRef.current) fileInputRef.current.value = ""; 
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+        }
       }
     };
     reader.onerror = (error) => {
       console.error("File Reading Error:", error);
       toast({ variant: "destructive", title: "File Error", description: "Could not read the selected image file."});
       setIsProcessingUpload(false);
+      if (textareaRef.current) { // Also focus if file reading fails
+        textareaRef.current.focus();
+      }
     };
   };
 
@@ -611,6 +621,7 @@ export function ChatInterface() {
                 <Icons.Paperclip className="w-5 h-5 text-accent" />
               </Button>
               <Textarea
+                ref={textareaRef}
                 value={currentInputText}
                 onChange={(e) => setCurrentInputText(e.target.value)}
                 onKeyDown={handleKeyDown}
@@ -728,5 +739,6 @@ export function ChatInterface() {
     </>
   );
 }
-
     
+
+      
