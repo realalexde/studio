@@ -108,7 +108,7 @@ export function ImageStudio() {
               onCheckedChange={setEnhancePrompt}
               disabled={isLoading}
             />
-            <Label htmlFor="enhance-prompt-toggle">Enhance Prompt for Detailed Image</Label>
+            <Label htmlFor="enhance-prompt-toggle">Enhance</Label>
           </div>
 
           <div className="w-full aspect-square rounded-lg border border-dashed border-border bg-muted flex items-center justify-center overflow-hidden">
@@ -159,5 +159,3 @@ export function ImageStudio() {
     </Card>
   );
 }
-
-    
