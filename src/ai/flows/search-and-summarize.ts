@@ -121,7 +121,7 @@ const searchAndSummarizePrompt = ai.definePrompt({
   input: {schema: SearchAndSummarizeInputSchema},
   output: {schema: SearchAndSummarizeOutputSchema},
   tools: [internetSearchTool, generateImageTool],
-  prompt: (input) => {
+  prompt: (input): Array<any> => {
     const historyMessages = (input.history || [])
       .map(h => `${h.sender}: ${h.text || ''}${h.imageUrl ? ' (User sent an image attachment)' : ''}`)
       .join('\n') || 'No conversation history provided.';
@@ -136,7 +136,10 @@ const searchAndSummarizePrompt = ai.definePrompt({
       latestQuerySection += `{{media url=query.imageUrl}} (User uploaded this image)`;
     }
 
-    return `You are Moonlight, an AI assistant. When asked who you are, you should identify yourself as such.
+    // Return an array of Parts, with the history as a text part
+    return [{
+      text:
+        `You are Moonlight, an AI assistant. When asked who you are, you should identify yourself as such.
 You have access to the full conversation history provided below. Use this history to:
 - Understand the context of the user's LATEST Question/Request.
 - Resolve ambiguities (e.g., pronouns like "it", "that", "they").
@@ -195,7 +198,8 @@ ${latestQuerySection}
     *   If you cannot provide a meaningful answer, 'summary' should reflect this politely.
     *   DO NOT return null, malformed JSON, or empty "summary".
 
-Assistant's Response (Remember to structure as a valid JSON object with a "summary" string (in the detected language), and optionally "imageUrl" string, following all rules above):`;
+Assistant's Response (Remember to structure as a valid JSON object with a "summary" string (in the detected language), and optionally "imageUrl" string, following all rules above):`
+    }];
   }
 });
 
