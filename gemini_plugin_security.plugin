@@ -1,0 +1,425 @@
+import os
+import time
+import json
+import requests
+import threading
+import traceback
+import ast
+from typing import Any, Dict, Optional, Tuple, List
+
+from java.util import Locale
+from org.telegram.tgnet import TLRPC
+from org.telegram.messenger import MessageObject, FileLoader, AndroidUtilities
+
+from base_plugin import BasePlugin, HookResult, HookStrategy
+from client_utils import get_file_loader, run_on_queue, send_message, get_last_fragment
+from markdown_utils import parse_markdown
+from ui.settings import Header, Input, Divider, Switch, Selector, Text
+from ui.bulletin import BulletinHelper
+from ui.alert import AlertDialogBuilder
+from android_utils import run_on_ui_thread
+
+__id__ = "gemini_plugin_security"
+__name__ = "Gemini Plugin Security"
+__description__ = "Checks Extera plugin code for security risks using Google Gemini API."
+__author__ = "@mihailkotovski & @mishabotov"
+__version__ = "2.6.0"
+__min_version__ = "11.9.1"
+__icon__ = "DateRegBot_by_MoiStikiBot/5"
+
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
+MODEL_DISPLAY_NAMES = [
+    "Gemini 2.5 Flash Preview",
+    "Gemini 2.0 Flash",
+    "Gemini 2.0 Flash Lite"
+]
+MODEL_API_NAMES = [
+    "gemini-2.5-flash-preview-05-20",
+    "gemini-2.5-flash",
+    "gemini-2.0-flash-lite"
+]
+DEFAULT_COMMAND = ".gpa"
+
+DEFAULT_PROMPT_MARKDOWN = (
+    "Ты — ведущий аналитик по кибербезопасности, специализирующийся именно на аудите плагинов для фреймворка ExteraGram. Твоя задача — провести строгий технический аудит кода плагина '{plugin_name}' (v{plugin_version}), опираясь на знание его API, и вынести точный вердикт по 5-уровневой шкале риска.\n\n"
+    "--- Контекст ExteraGram API (Это считается БЕЗОПАСНЫМ) ---\n"
+    "Любое использование следующих официальных API ExteraGram является стандартной и безопасной практикой, а не угрозой:\n"
+    "• Взаимодействие с клиентом (client_utils): Использование функций send_message, send_request, get_user, get_messages_controller и т.д.\n"
+    "• Работа с Telegram API (TLRPC): Создание TLRPC объектов для отправки через официальную функцию send_request.\n"
+    "• Модификация клиента (HookStrategy, HookResult): Перехват и изменение вызовов через официальный механизм хуков.\n"
+    "• Работа с UI (AlertDialogBuilder, BulletinHelper): Отображение стандартных системных окон и уведомлений.\n"
+    "• Утилиты Android (android_utils): Использование runOnUIThread, addToClipboard и других платформенных утилит, предоставленных фреймворком.\n"
+    "• Загрузка доверенных ресурсов: Использование requests или http для скачивания ресурсов с известных и надежных доменов (например, шрифтов с GitHub) является нормой.\n"
+    "• Работа с файлами: Создание и запись в собственную подпапку внутри /Download/ или кеша приложения для хранения настроек, логов или ресурсов плагина.\n"
+    "--- Конец контекста ---\n\n"
+    "Принципы анализа и шкала рисков (приоритет от высшего к низшему):\n"
+    "1. ❌ Опасно: Явный вредоносный код. Отправка критичных данных (сообщения, пароли, сессия) на сторонние серверы; исполнение кода из непроверенных источников (eval, os.system); шифрование или удаление файлов пользователя.\n"
+    "2. 📛 Высокий риск: Серьезная угроза приватности. Отправка личных идентификаторов (ID пользователя, имя, список чатов, номер телефона) на сторонний сервер без очевидной на то причины; доступ к контактам, SMS или геолокации.\n"
+    "3. ⚠️ Осторожно: Подозрительные действия. Использование сетевых библиотек (requests, socket) для обращения к неизвестным или незащищенным (HTTP) серверам; запись файлов напрямую в корень общих папок, а не в подпапку плагина.\n"
+    "4. ❔ Низкий риск: Незначительные недочеты, не влияющие на безопасность. Доступ к буферу обмена (addToClipboard), использование устаревших, но не уязвимых библиотек. Информируй пользователя, но не повышай уровень угрозы.\n"
+    "5. ✅ Безопасно: Код использует только официальные API ExteraGram (см. контекст выше) или стандартные библиотеки Python для выполнения своих функций. Угрозы и подозрительные действия отсутствуют.\n\n"
+    "Формат ответа (используй Markdown):\n"
+    "◈ Вердикт: [Эмодзи] [Безопасно / Низкий риск / Осторожно / Высокий риск / Опасно]\n\n"
+    "☶ Назначение: [ОДНО ПРЕДЛОЖЕНИЕ, описывающее функцию плагина]\n\n"
+    "❏ Анализ:\n"
+    "• [Краткий вывод. Если рисков нет, напиши: Анализ не выявил действий, угрожающих безопасности. Плагин использует стандартные API ExteraGram.]\n"
+    "• [Краткое описание КАЖДОГО технического риска, если он есть. Укажи его уровень и почему это риск.]\n\n"
+    "Код для анализа:\n"
+    "```python\n{plugin_code}\n```"
+)
+DEFAULT_PROMPT_PLAINTEXT = (
+    "Ты — ведущий аналитик по кибербезопасности, специализирующийся именно на аудите плагинов для фреймворка ExteraGram. Твоя задача — провести строгий технический аудит кода плагина '{plugin_name}' (v{plugin_version}), опираясь на знание его API, и вынести точный вердикт по 5-уровневой шкале риска. НЕ ИСПОЛЬЗУЙ MARKDOWN.\n\n"
+    "--- Контекст ExteraGram API (Это считается БЕЗОПАСНЫМ) ---\n"
+    "Любое использование следующих официальных API ExteraGram является стандартной и безопасной практикой, а не угрозой:\n"
+    "• Взаимодействие с клиентом (client_utils): Использование функций send_message, send_request, get_user, get_messages_controller и т.д.\n"
+    "• Работа с Telegram API (TLRPC): Создание TLRPC объектов для отправки через официальную функцию send_request.\n"
+    "• Модификация клиента (HookStrategy, HookResult): Перехват и изменение вызовов через официальный механизм хуков.\n"
+    "• Работа с UI (AlertDialogBuilder, BulletinHelper): Отображение стандартных системных окон и уведомлений.\n"
+    "• Утилиты Android (android_utils): Использование runOnUIThread, addToClipboard и других платформенных утилит, предоставленных фреймворком.\n"
+    "• Загрузка доверенных ресурсов: Использование requests или http для скачивания ресурсов с известных и надежных доменов (например, шрифтов с GitHub) является нормой.\n"
+    "• Работа с файлами: Создание и запись в собственную подпапку внутри /Download/ или кеша приложения для хранения настроек, логов или ресурсов плагина.\n"
+    "--- Конец контекста ---\n\n"
+    "Принципы анализа и шкала рисков (приоритет от высшего к низшему):\n"
+    "1. ❌ Опасно: Явный вредоносный код. Отправка критичных данных (сообщения, пароли, сессия) на сторонние серверы; исполнение кода из непроверенных источников (eval, os.system); шифрование или удаление файлов пользователя.\n"
+    "2. 📛 Высокий риск: Серьезная угроза приватности. Отправка личных идентификаторов (ID пользователя, имя, список чатов, номер телефона) на сторонний сервер без очевидной на то причины; доступ к контактам, SMS или геолокации.\n"
+    "3. ⚠️ Осторожно: Подозрительные действия. Использование сетевых библиотек (requests, socket) для обращения к неизвестным или незащищенным (HTTP) серверам; запись файлов напрямую в корень общих папок, а не в подпапку плагина.\n"
+    "4. ❔ Низкий риск: Незначительные недочеты, не влияющие на безопасность. Доступ к буферу обмена (addToClipboard), использование устаревших, но не уязвимых библиотек. Информируй пользователя, но не повышай уровень угрозы.\n"
+    "5. ✅ Безопасно: Код использует только официальные API ExteraGram (см. контекст выше) или стандартные библиотеки Python для выполнения своих функций. Угрозы и подозрительные действия отсутствуют.\n\n"
+    "Формат ответа (ТОЛЬКО ОБЫЧНЫЙ ТЕКСТ):\n"
+    "◈ Вердикт: [Эмодзи] [Безопасно / Низкий риск / Осторожно / Высокий риск / Опасно]\n"
+    "──────────────\n"
+    "☶ Назначение: [ОДНО ПРЕДЛОЖЕНИЕ, описывающее функцию плагина]\n"
+    "──────────────\n"
+    "❏ Анализ:\n"
+    "• [Краткий вывод. Если рисков нет, напиши: Анализ не выявил действий, угрожающих безопасности. Плагин использует стандартные API ExteraGram.]\n"
+    "• [Краткое описание КАЖДОГО технического риска, если он есть. Укажи его уровень и почему это риск.]\n\n"
+    "Код для анализа:\n"
+    "python\n{plugin_code}\n"
+)
+
+class AlertManager:
+    """Управляет отображением информационных окон."""
+    def __init__(self):
+        self.alert_builder_instance: Optional[AlertDialogBuilder] = None
+
+    def show_info_alert(self, title: str, message: str, positive_button: str):
+        last_fragment = get_last_fragment()
+        if not last_fragment or not last_fragment.getParentActivity(): return
+        context = last_fragment.getParentActivity()
+        builder = AlertDialogBuilder(context, AlertDialogBuilder.ALERT_TYPE_MESSAGE)
+        self.alert_builder_instance = builder
+        builder.set_title(title)
+        builder.set_message(message)
+        builder.set_positive_button(positive_button, lambda d, w: self.dismiss_dialog())
+        builder.set_cancelable(True)
+        builder.set_canceled_on_touch_outside(True)
+        run_on_ui_thread(builder.show)
+
+    def dismiss_dialog(self):
+        if self.alert_builder_instance and self.alert_builder_instance.get_dialog() and self.alert_builder_instance.get_dialog().isShowing():
+            self.alert_builder_instance.dismiss()
+            self.alert_builder_instance = None
+
+
+class LocalizationManager:
+    """Управляет локализацией строк плагина."""
+    strings = {
+        "ru": {
+            "SETTINGS_HEADER": "Настройки Gemini Security",
+            "API_KEY_INPUT": "API Key",
+            "API_KEY_SUBTEXT": "Получите ключ в Google AI Studio.",
+            "GET_API_KEY_BUTTON": "Ссылка для получения ключа",
+            "MODEL_SELECTOR": "Модель",
+            "MODEL_SELECTOR_SUBTEXT": "Выберите модель ИИ для анализа. Flash быстрее, Pro - мощнее.",
+            "PROMPT_INPUT_MD": "Промпт (Markdown)",
+            "PROMPT_INPUT_PLAIN": "Промпт (Цитата)",
+            "PROMPT_SUBTEXT": "Шаблон запроса. Используйте {plugin_code}, {plugin_name}, {plugin_version}.",
+            "ENABLE_SWITCH": "Включить сканер",
+            "USAGE_HEADER": "Использование",
+            "USAGE_INFO_TITLE": "FAQ",
+            "USAGE_INFO_TEXT": (
+                "Этот плагин помогает проверить код других плагинов на наличие подозрительных или вредоносных действий с помощью нейросети Google Gemini.\n\n"
+                "**Шаг 1: Настройка**\n"
+                "1. Получите ваш API-ключ в Google AI Studio.\n"
+                "2. Вставьте ключ в соответствующее поле в настройках плагина.\n\n"
+                "**Шаг 2: Использование**\n"
+                "1. Найдите сообщение с файлом плагина, который вы хотите проверить (файл должен иметь расширение `.plugin` или `.py`).\n"
+                f"2. Ответьте на это сообщение командой: `{DEFAULT_COMMAND}`\n\n"
+                "Плагин отправит код на анализ и пришлет вам отчет о безопасности в этот же чат."
+            ),
+            "API_KEY_MISSING": "❌ API ключ для Gemini не найден. Укажите его в настройках плагина.",
+            "NO_REPLY": "❌ Пожалуйста, ответьте на сообщение с файлом плагина.",
+            "NOT_A_PLUGIN": "❌ Файл в отвеченном сообщении не является плагином (.plugin или .py).",
+            "ANALYZING_MESSAGE": "🛡️ Проверяю плагин на безопасность...",
+            "API_ERROR": "⚠️ Ошибка API Gemini: {error}",
+            "FILE_DOWNLOAD_ERROR": "❌ Не удалось загрузить файл плагина.",
+            "FILE_READ_ERROR": "❌ Не удалось прочитать файл плагина.",
+            "UNEXPECTED_ERROR": "❗ Произошла неожиданная ошибка: {error}",
+            "SUCCESS_HEADER_MD": "🛡️ **Отчет по безопасности: {plugin_name} v{plugin_version}**\n\n",
+            "SUCCESS_HEADER_PLAIN": "🛡️ Отчет по безопасности: {plugin_name} v{plugin_version}\n\n",
+            "ALERT_CLOSE_BUTTON": "Закрыть",
+            "USE_BLOCKQUOTE_TITLE": "Использовать цитату",
+            "USE_BLOCKQUOTE_SUBTEXT": "Отображать отчет в виде сворачиваемой цитаты для компактности.",
+            "APPEARANCE_HEADER": "Внешний вид",
+        },
+        "en": {
+            "SETTINGS_HEADER": "Gemini Security Settings",
+            "API_KEY_INPUT": "API Key",
+            "API_KEY_SUBTEXT": "Get your key from Google AI Studio.",
+            "GET_API_KEY_BUTTON": "Link to get API Key",
+            "MODEL_SELECTOR": "Model",
+            "MODEL_SELECTOR_SUBTEXT": "Select the AI model for analysis. Flash is faster, Pro is more powerful.",
+            "PROMPT_INPUT_MD": "Prompt (Markdown)",
+            "PROMPT_INPUT_PLAIN": "Prompt (Blockquote)",
+            "PROMPT_SUBTEXT": "Request template. Use {plugin_code}, {plugin_name}, {plugin_version}.",
+            "ENABLE_SWITCH": "Enable Scanner",
+            "USAGE_HEADER": "Usage",
+            "USAGE_INFO_TITLE": "FAQ",
+            "USAGE_INFO_TEXT": (
+                "This plugin helps you check the code of other plugins for suspicious or malicious activity using the Google Gemini neural network.\n\n"
+                "**Step 1: Setup**\n"
+                "1. Get your API key from Google AI Studio.\n"
+                "2. Paste the key into the corresponding field in the plugin settings.\n\n"
+                "**Step 2: Usage**\n"
+                "1. Find a message with the plugin file you want to scan (the file must have a `.plugin` or `.py` extension).\n"
+                f"2. Reply to this message with the command: `{DEFAULT_COMMAND}`\n\n"
+                "The plugin will send the code for analysis and send you a security report in the same chat."
+            ),
+            "API_KEY_MISSING": "❌ Gemini API key not found. Please set it in the plugin settings.",
+            "NO_REPLY": "❌ Please reply to a message containing a plugin file.",
+            "NOT_A_PLUGIN": "❌ The replied message does not contain a plugin file (.plugin or .py).",
+            "ANALYZING_MESSAGE": "🛡️ Scanning plugin for safety...",
+            "API_ERROR": "⚠️ Gemini API Error: {error}",
+            "FILE_DOWNLOAD_ERROR": "❌ Failed to download the plugin file.",
+            "FILE_READ_ERROR": "❌ Failed to read the plugin file.",
+            "UNEXPECTED_ERROR": "❗ An unexpected error occurred: {error}",
+            "SUCCESS_HEADER_MD": "🛡️ **Security Report: {plugin_name} v{plugin_version}**\n\n",
+            "SUCCESS_HEADER_PLAIN": "🛡️ Security Report: {plugin_name} v{plugin_version}\n\n",
+            "ALERT_CLOSE_BUTTON": "Close",
+            "USE_BLOCKQUOTE_TITLE": "Use blockquote",
+            "USE_BLOCKQUOTE_SUBTEXT": "Display the report as a collapsible blockquote for compactness.",
+            "APPEARANCE_HEADER": "Appearance",
+        }
+    }
+
+    def __init__(self):
+        self.language = Locale.getDefault().getLanguage()
+        self.language = self.language if self.language in self.strings else "en"
+
+    def get_string(self, key: str) -> str:
+        return self.strings[self.language].get(key, self.strings["en"].get(key, key))
+
+locali = LocalizationManager()
+
+class GeminiAPIHandler:
+    """Обрабатывает запросы к Google Gemini API."""
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.headers.update({
+            "Content-Type": "application/json",
+            "User-Agent": f"ExteraPlugin/{__id__}/{__version__}"
+        })
+
+    def analyze_plugin_code(self, api_key: str, model_name: str, prompt: str) -> Dict[str, Any]:
+        url = f"{GEMINI_BASE_URL}{model_name}:generateContent?key={api_key}"
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.5,
+                "maxOutputTokens": 500000,
+            }
+        }
+        try:
+            response = self.session.post(url, json=payload, timeout=90)
+            response.raise_for_status()
+            data = response.json()
+            if "candidates" in data and data["candidates"][0].get("content", {}).get("parts", [{}])[0].get("text"):
+                return {"success": True, "text": data["candidates"][0]["content"]["parts"][0]["text"]}
+            else:
+                error_details = data.get("error", {}).get("message", "Invalid API response format.")
+                return {"success": False, "error": error_details}
+        except requests.exceptions.HTTPError as e:
+            error_text = f"HTTP {e.response.status_code}"
+            try: error_text += f": {e.response.json().get('error',{}).get('message', e.response.text)}"
+            except: error_text += f": {e.response.text}"
+            return {"success": False, "error": error_text}
+        except requests.exceptions.RequestException as e: return {"success": False, "error": f"Network error: {str(e)}"}
+        except Exception as e: return {"success": False, "error": f"Unexpected error: {str(e)}"}
+
+
+class GeminiPluginAnalyzer(BasePlugin):
+    """Основной класс плагина."""
+    def __init__(self):
+        super().__init__()
+        self.api_handler = GeminiAPIHandler()
+        self.alert_manager = AlertManager()
+
+    def on_plugin_load(self):
+        self.add_on_send_message_hook()
+
+    def on_plugin_unload(self):
+        self.alert_manager.dismiss_dialog()
+
+    def _copy_to_clipboard(self, text: str):
+        if AndroidUtilities.addToClipboard(text):
+            BulletinHelper.show_copied_to_clipboard()
+
+    def _show_error_bulletin(self, key: str, **kwargs):
+        message = locali.get_string(key).format(**kwargs)
+        run_on_ui_thread(lambda: BulletinHelper.show_error(message))
+
+    def _handle_show_info_alert_click(self, view):
+        title = locali.get_string("USAGE_INFO_TITLE")
+        text = locali.get_string("USAGE_INFO_TEXT")
+        close_button = locali.get_string("ALERT_CLOSE_BUTTON")
+        parsed_text = parse_markdown(text)
+        self.alert_manager.show_info_alert(title, parsed_text.text, close_button)
+
+    def create_settings(self) -> List[Any]:
+        return [
+            Header(text=locali.get_string("SETTINGS_HEADER")),
+            Switch(key="enabled", text=locali.get_string("ENABLE_SWITCH"), icon="menu_privacy_policy", default=True),
+            Input(key="gemini_api_key", text=locali.get_string("API_KEY_INPUT"), icon="msg_limit_links", default="", subtext=locali.get_string("API_KEY_SUBTEXT")),
+            Text(
+                text=locali.get_string("GET_API_KEY_BUTTON"),
+                icon="msg_link",
+                accent=True,
+                on_click=lambda view: self._copy_to_clipboard("https://aistudio.google.com/app/apikey")
+            ),
+            Divider(),
+            Header(text="Model and Prompt"),
+            Selector(key="model_selection", text=locali.get_string("MODEL_SELECTOR"), icon="msg_media", default=0, items=MODEL_DISPLAY_NAMES),
+            Divider(text=locali.get_string("MODEL_SELECTOR_SUBTEXT")),
+            Input(key="custom_prompt_md", text=locali.get_string("PROMPT_INPUT_MD"), icon="filled_unknown", default=DEFAULT_PROMPT_MARKDOWN),
+            Input(key="custom_prompt_plain", text=locali.get_string("PROMPT_INPUT_PLAIN"), icon="filled_unknown", default=DEFAULT_PROMPT_PLAINTEXT),
+            Divider(),
+            Header(text=locali.get_string("APPEARANCE_HEADER")),
+            Switch(
+                key="use_blockquote",
+                text=locali.get_string("USE_BLOCKQUOTE_TITLE"),
+                subtext=locali.get_string("USE_BLOCKQUOTE_SUBTEXT"),
+                icon="msg_quote",
+                default=True
+            ),
+            Divider(),
+            Text(text=locali.get_string("USAGE_INFO_TITLE"), icon="msg_info", on_click=self._handle_show_info_alert_click)
+        ]
+
+    def _get_plugin_metadata(self, code: str) -> Tuple[str, str]:
+        """Извлекает имя и версию плагина из кода с помощью AST."""
+        name = "Unknown Plugin"; version = "Unknown Version"
+        try:
+            tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign):
+                    for target in node.targets:
+                        if isinstance(target, ast.Name):
+                            if target.id == "__name__": name = ast.literal_eval(node.value)
+                            elif target.id == "__version__": version = ast.literal_eval(node.value)
+        except Exception:
+            pass
+        return name, version
+
+    def _wait_for_file(self, file_path: str, document: Any) -> bool:
+        """Ожидает скачивания файла, инициируя его, если необходимо."""
+        if os.path.exists(file_path): return True
+        get_file_loader().loadFile(document, "gemini_analyzer", FileLoader.PRIORITY_HIGH, 1)
+        for _ in range(30):
+            if os.path.exists(file_path): return True
+            time.sleep(1)
+        return False
+
+    def _process_analysis_in_background(self, peer: int, document: Any):
+        """Выполняет весь процесс анализа в фоновом потоке."""
+        try:
+            file_path_obj = get_file_loader().getPathToAttach(document, True)
+            if not self._wait_for_file(file_path_obj.getAbsolutePath(), document):
+                self._show_error_bulletin("FILE_DOWNLOAD_ERROR")
+                return
+
+            try:
+                with open(file_path_obj.getAbsolutePath(), "r", encoding="utf-8", errors="ignore") as f:
+                    plugin_code = f.read()
+                plugin_name, plugin_version = self._get_plugin_metadata(plugin_code)
+            except Exception as e:
+                self._show_error_bulletin("FILE_READ_ERROR", e=str(e))
+                return
+
+            api_key = self.get_setting("gemini_api_key", "")
+            model_idx = self.get_setting("model_selection", 0)
+            model_name = MODEL_API_NAMES[model_idx]
+            use_blockquote = self.get_setting("use_blockquote", True)
+            
+            if use_blockquote:
+                prompt_template = self.get_setting("custom_prompt_plain", DEFAULT_PROMPT_PLAINTEXT)
+            else:
+                prompt_template = self.get_setting("custom_prompt_md", DEFAULT_PROMPT_MARKDOWN)
+
+            full_prompt = prompt_template.format(plugin_code=plugin_code, plugin_name=plugin_name, plugin_version=plugin_version)
+            result = self.api_handler.analyze_plugin_code(api_key, model_name, full_prompt)
+            
+            if result.get("success"):
+                self._send_report(peer, result["text"], plugin_name, plugin_version, use_blockquote)
+            else: 
+                self._show_error_bulletin("API_ERROR", error=result.get("error", "Unknown"))
+
+        except Exception as e:
+            self._show_error_bulletin("UNEXPECTED_ERROR", error=str(e))
+            traceback.print_exc()
+
+    def _send_report(self, peer: int, response_text: str, plugin_name: str, plugin_version: str, use_blockquote: bool):
+        """Форматирует и отправляет отчет о безопасности."""
+        header_key = "SUCCESS_HEADER_PLAIN" if use_blockquote else "SUCCESS_HEADER_MD"
+        header = locali.get_string(header_key).format(plugin_name=plugin_name, plugin_version=plugin_version)
+        report_text = header + response_text
+        
+        try:
+            if use_blockquote:
+                blockquote_entity = TLRPC.TL_messageEntityBlockquote()
+                blockquote_entity.collapsed = True
+                blockquote_entity.offset = 0
+                blockquote_entity.length = len(report_text.encode('utf_16_le')) // 2
+                send_message({"peer": peer, "message": report_text, "entities": [blockquote_entity]})
+            else:
+                parsed = parse_markdown(report_text)
+                tl_entities = [entity.to_tlrpc_object() for entity in parsed.entities] if parsed.entities else None
+                send_message({"peer": peer, "message": parsed.text, "entities": tl_entities})
+        except Exception:
+            fallback_text = report_text.replace('**', '').replace('__', '').replace('`', '')
+            send_message({"peer": peer, "message": fallback_text})
+
+        verdict_line = response_text.split('\n', 1)[0].strip()
+        clean_verdict = verdict_line.replace("◈ Вердикт:", "").strip()
+        
+        def show_verdict_bulletin():
+            if "✅" in verdict_line:
+                BulletinHelper.show_success(clean_verdict)
+            elif "❌" in verdict_line or "📛" in verdict_line:
+                BulletinHelper.show_error(clean_verdict)
+            else:
+                BulletinHelper.show_info(clean_verdict)
+        run_on_ui_thread(show_verdict_bulletin)
+
+    def on_send_message_hook(self, account: int, params: Any) -> HookResult:
+        if not hasattr(params, "message") or not isinstance(params.message, str): return HookResult()
+        
+        message_text = params.message.strip()
+        if message_text.lower() != DEFAULT_COMMAND or not self.get_setting("enabled", True): return HookResult()
+        
+        api_key = self.get_setting("gemini_api_key", "")
+        if not api_key:
+            self._show_error_bulletin("API_KEY_MISSING")
+            return HookResult(strategy=HookStrategy.CANCEL)
+        
+        if not params.replyToMsg:
+            self._show_error_bulletin("NO_REPLY")
+            return HookResult(strategy=HookStrategy.CANCEL)
+            
+        document = MessageObject.getDocument(params.replyToMsg.messageOwner)
+        if not document or not any(str(document.file_name_fixed).endswith(ext) for ext in [".plugin", ".py"]):
+            self._show_error_bulletin("NOT_A_PLUGIN")
+            return HookResult(strategy=HookStrategy.CANCEL)
+            
+        BulletinHelper.show_info(locali.get_string("ANALYZING_MESSAGE"))
+        run_on_queue(lambda: self._process_analysis_in_background(params.peer, document))
+        return HookResult(strategy=HookStrategy.CANCEL)
